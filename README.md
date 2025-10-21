@@ -1,3 +1,5 @@
+![Alt text](./assets/tracksmartin_hits.png)
+
 I’m a musician, and to be honest, I find the idea of AI making music kind of unsettling.
 
 It blurs the line between creativity and computation in a way that makes me very uneasy and worried about the future.
@@ -8,6 +10,11 @@ So I’m exploring it as a technical hobbyist, trying to understand how it works
 
 I hope you are able to use this tool for fun and experimentation, but please remember that true artistry comes from human experience, emotion, and connection — things AI can never replicate.
 
+There are two things I am sure of: 
+1. AI won't fix your mix.
+2. Your snare still sucks.
+
+Enjoy.
 
 ## TracksMartin - Hits on Demand.
 
