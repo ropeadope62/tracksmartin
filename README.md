@@ -1,5 +1,3 @@
-![Alt text](./assets/tracksmartin_hits.png)
-
 I’m a musician, and to be honest, I find the idea of AI making music kind of unsettling.
 
 It blurs the line between creativity and computation in a way that makes me very uneasy and worried about the future.
@@ -384,17 +382,42 @@ python tracksmartin.py extend CLIP_ID [OPTIONS]
 ```
 
 **Options:**
-- `--lyrics, -l TEXT` - Additional lyrics for the extension
-- `--continue-at INTEGER` - Time in seconds to continue from (default: 0)
+- `--prompt, -p TEXT` - Additional lyrics for the extension
+- `--title, -t TEXT` - Title for the extended version
 - `--tags TEXT` - Style tags for the extension
+- `--continue-at INTEGER` - Time in seconds to continue from (default: 0 = end of song)
+- `--model, -m TEXT` - Model version (default: chirp-v5)
+- `--wait / --no-wait` - Wait for generation to complete
+- `--download / --no-download` - Download when ready
+- `--output-dir PATH` - Download directory (default: current directory)
 
 **Examples:**
 
 ```bash
-python tracksmartin.py extend 26c9c592-0566-46cf-bb71-91ac1deaa7b5 -l "[Outro]
-Fading away..."
+# Extend with new lyrics
+python tracksmartin.py extend 26c9c592-0566-46cf-bb71-91ac1deaa7b5 \
+  --prompt "[Verse 3]\nNew lyrics here\n[Outro]\nFading away..."
 
-python tracksmartin.py extend 26c9c592-0566-46cf-bb71-91ac1deaa7b5 --continue-at 60
+# Extend with new title and style
+python tracksmartin.py extend 26c9c592-0566-46cf-bb71-91ac1deaa7b5 \
+  --title "Extended Mix" \
+  --tags "energetic, upbeat"
+
+# Extend from specific timestamp and wait for completion
+python tracksmartin.py extend 26c9c592-0566-46cf-bb71-91ac1deaa7b5 \
+  --continue-at 30 \
+  --wait \
+  --download
+
+# Full example with all options
+python tracksmartin.py extend 26c9c592-0566-46cf-bb71-91ac1deaa7b5 \
+  --prompt "[Bridge]\nBridge lyrics here" \
+  --title "Extended Version" \
+  --tags "rock, guitar solo" \
+  --model chirp-v5 \
+  --wait \
+  --download \
+  --output-dir ./extensions
 ```
 
 ---
@@ -445,7 +468,39 @@ python tracksmartin.py cover 26c9c592-0566-46cf-bb71-91ac1deaa7b5 \
   --wait \
   --download \
   --output-dir ./covers
+
+# Turn a pop song into a rock anthem
+python tracksmartin.py cover 26c9c592-0566-46cf-bb71-91ac1deaa7b5 \
+  --tags "hard rock, electric guitar, powerful vocals" \
+  --title "Rock Version" \
+  --wait \
+  --download
+
+# Create an acoustic version
+python tracksmartin.py cover 26c9c592-0566-46cf-bb71-91ac1deaa7b5 \
+  --tags "acoustic, folk, intimate" \
+  --wait
+
+# Make a cover with completely different lyrics
+python tracksmartin.py cover 26c9c592-0566-46cf-bb71-91ac1deaa7b5 \
+  --prompt "[Verse 1]\nCompletely different lyrics\nNew story to tell\n\n[Chorus]\nNew hook here\nCatchy and fresh" \
+  --tags "indie pop" \
+  --title "My Remix" \
+  --wait \
+  --download
+
+# Electronic remix of an original song
+python tracksmartin.py cover 26c9c592-0566-46cf-bb71-91ac1deaa7b5 \
+  --tags "electronic, synthwave, 128 bpm, upbeat" \
+  --model chirp-v5
+
+# Country version with new title
+python tracksmartin.py cover 26c9c592-0566-46cf-bb71-91ac1deaa7b5 \
+  --tags "country, acoustic guitar, storytelling" \
+  --title "Country Roads Version"
 ```
+
+**Note:** At least one of `--prompt`, `--title`, or `--tags` is required to create a cover. The API needs to know what you want to change about the original.
 
 ---
 
@@ -888,7 +943,7 @@ The `TracksMartinClient` class provides the following methods:
 **Music Creation:**
 - `create_music(prompt, title, tags, style_weight, weirdness_constraint, negative_tags, custom_mode, make_instrumental, mv)` - Custom mode with full control
 - `create_music_with_description(gpt_description_prompt, make_instrumental, mv)` - No-custom mode with AI-generated music from descriptions
-- `extend_music(clip_id, prompt, continue_at, tags, title)` - Extend existing songs
+- `extend_music(continue_clip_id, prompt, continue_at, tags, title, custom_mode, mv)` - Extend existing songs with additional content
 - `concat_music(clip_ids)` - Concatenate multiple clips
 - `cover_music(continue_clip_id, prompt, title, tags, custom_mode, mv)` - Create cover versions with custom lyrics and styles
 
@@ -941,6 +996,5 @@ Available AI models (from oldest to newest):
   - [Get Credits](https://docs.sunoapi.com/get-credits)
 - [Click Documentation](https://click.palletsprojects.com/)
 - Example Scripts:
-
 
 

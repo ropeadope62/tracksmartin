@@ -375,31 +375,84 @@ def get(task_id, download, output_dir):
 
 @cli.command()
 @click.argument('clip_id')
-@click.option('--lyrics', '-l', default='', help='Additional lyrics for the extension')
-@click.option('--continue-at', type=int, default=0,
-              help='Time in seconds to continue from')
+@click.option('--prompt', '-p', help='Additional lyrics for the extension')
+@click.option('--title', '-t', help='Title for the extended version')
 @click.option('--tags', help='Style tags for the extension')
-def extend(clip_id, lyrics, continue_at, tags):
-    """Extend an existing song clip"""
+@click.option('--continue-at', type=int, default=0,
+              help='Time in seconds to continue from (default: 0 = end of song)')
+@click.option('--model', '-m', default='chirp-v5',
+              help='Model version (default: chirp-v5)')
+@click.option('--wait/--no-wait', default=False,
+              help='Wait for generation to complete')
+@click.option('--download/--no-download', default=False,
+              help='Download when ready')
+@click.option('--output-dir', type=click.Path(), default='.',
+              help='Download directory')
+def extend(clip_id, prompt, title, tags, continue_at, model, wait, download, output_dir):
+    """Extend an existing song clip
+    
+    \b
+    Examples:
+      # Extend with new lyrics
+      tracksmartin extend <clip_id> --prompt "[Verse 3]\\nNew lyrics here"
+      
+      # Extend with new title and style
+      tracksmartin extend <clip_id> --title "Extended Mix" --tags "energetic"
+      
+      # Extend from specific timestamp and wait
+      tracksmartin extend <clip_id> --continue-at 30 --wait --download
+    """
     
     client = TracksMartinClient()
     
     click.secho(f"\nExtending clip: {clip_id}", fg='cyan', bold=True)
+    if continue_at > 0:
+        click.echo(f"Continue from: {continue_at}s")
+    if prompt:
+        click.echo(f"Additional lyrics provided")
+    if title:
+        click.echo(f"Title: {title}")
+    if tags:
+        click.echo(f"Style tags: {tags}")
+    click.echo(f"Model: {model}")
     
     try:
         response = client.extend_music(
-            clip_id=clip_id,
-            prompt=lyrics,
+            continue_clip_id=clip_id,
+            prompt=prompt or "",
+            title=title,
+            tags=tags,
             continue_at=continue_at,
-            tags=tags
+            mv=model
         )
         
-        task_id = response['task_id']
-        click.secho(f"Extension task created: {task_id}", fg='green')
-        click.echo(f"\nUse 'TracksMartin get {task_id}' to check status")
+        task_id = response.get('task_id')
+        if not task_id:
+            click.secho(f"Error: No task_id in response", fg='red', err=True)
+            sys.exit(1)
+        
+        click.secho(f"✓ Extension task created: {task_id}", fg='green')
+        logger.info(f"Extension created - clip_id: {clip_id}, task_id: {task_id}")
+        
+        if wait:
+            click.echo("\nWaiting for extension to complete...")
+            clip = client.poll_until_complete(task_id, verbose=True)
+            click.secho(f"\n✓ Complete! Audio URL: {clip['audio_url']}", fg='green')
+            
+            if download and clip.get('audio_url'):
+                ext_title = title or clip.get('title', f'extended_{clip_id}')
+                filename = client.sanitize_filename(ext_title) + ".mp3"
+                filepath = f"{output_dir}/{filename}"
+                
+                client.download_file(clip['audio_url'], filepath)
+                click.secho(f"✓ Downloaded: {filepath}", fg='green')
+                logger.info(f"Downloaded extension: {filepath}")
+        else:
+            click.echo(f"\nUse 'tracksmartin get {task_id}' to check status")
         
     except TracksMartinClientError as e:
         click.secho(f"Error: {e}", fg='red', err=True)
+        logger.error(f"Extension failed: {e}")
         sys.exit(1)
 
 
@@ -462,6 +515,18 @@ def cover(clip_id, prompt, title, tags, model, wait, download, output_dir):
     client = TracksMartinClient()
     
     click.secho(f"\nCreating cover of: {clip_id}", fg='cyan', bold=True)
+    
+    # Validate that at least one cover parameter is provided
+    if not any([prompt, title, tags]):
+        click.secho(
+            "Error: You must specify at least one of --prompt, --title, or --tags",
+            fg='red', err=True
+        )
+        click.echo("\nExamples:")
+        click.echo("  tracksmartin cover <clip_id> --tags 'rock'")
+        click.echo("  tracksmartin cover <clip_id> --prompt '[Verse]\\nLyrics...'")
+        click.echo("  tracksmartin cover <clip_id> --title 'My Cover'")
+        sys.exit(1)
     
     try:
         response = client.cover_music(

@@ -205,37 +205,45 @@ class TracksMartinClient:
     
     def extend_music(
         self,
-        clip_id: str,
+        continue_clip_id: str,
         prompt: str = "",
         continue_at: int = 0,
         tags: Optional[str] = None,
-        title: Optional[str] = None
+        title: Optional[str] = None,
+        custom_mode: bool = True,
+        mv: str = "chirp-v5"
     ) -> Dict[str, Any]:
         """
         Extend an existing music clip
         
         Args:
-            clip_id: ID of the clip to extend
+            continue_clip_id: ID of the clip to extend
             prompt: Additional lyrics for the extension
-            continue_at: Time in seconds where to continue from
-            tags: Style tags
+            continue_at: Time in seconds where to continue from (default: 0 for end of song)
+            tags: Style tags for the extension
             title: Title for the extended version
+            custom_mode: Use custom mode (default: True)
+            mv: Model version (default: chirp-v5)
             
         Returns:
             Dictionary containing task_id for polling
         """
         payload = {
-            "clip_id": clip_id,
-            "prompt": prompt,
-            "continue_at": continue_at
+            "task_type": "extend_music",
+            "continue_clip_id": continue_clip_id,
+            "continue_at": continue_at,
+            "custom_mode": custom_mode,
+            "mv": mv
         }
         
+        if prompt:
+            payload["prompt"] = prompt
         if tags:
             payload["tags"] = tags
         if title:
             payload["title"] = title
         
-        return self._make_request("POST", "suno/extend", data=payload)
+        return self._make_request("POST", "suno/create", data=payload)
     
     def concat_music(
         self,
@@ -389,6 +397,18 @@ class TracksMartinClient:
             Dictionary containing music details and status
         """
         return self._make_request("GET", f"suno/task/{task_id}")
+    
+    def get_midi(self, clip_id: str) -> Dict[str, Any]:
+        """
+        Get MIDI format URL for a clip
+        
+        Args:
+            clip_id: The clip ID
+        Returns:
+            Dictionary containing midi_url
+        """
+        payload = {"clip_id": clip_id}
+        return self._make_request("POST", "suno/midi", data=payload)
     
     def get_wav_url(self, clip_id: str) -> Dict[str, Any]:
         """
