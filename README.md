@@ -1,3 +1,5 @@
+![Alt text](./assets/tracksmartin_hits.png)
+
 I’m a musician, and to be honest, I find the idea of AI making music kind of unsettling.
 
 It blurs the line between creativity and computation in a way that makes me very uneasy and worried about the future.
@@ -939,5 +941,6 @@ Available AI models (from oldest to newest):
   - [Get Credits](https://docs.sunoapi.com/get-credits)
 - [Click Documentation](https://click.palletsprojects.com/)
 - Example Scripts:
+
 
 
