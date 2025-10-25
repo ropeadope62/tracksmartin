@@ -1,5 +1,3 @@
-![Alt text](./assets/tracksmartin_hits.png)
-
 I’m a musician, and to be honest, I find the idea of AI making music kind of unsettling.
 
 It blurs the line between creativity and computation in a way that makes me very uneasy and worried about the future.
@@ -10,11 +8,8 @@ So I’m exploring it as a technical hobbyist, trying to understand how it works
 
 I hope you are able to use this tool for fun and experimentation, but please remember that true artistry comes from human experience, emotion, and connection — things AI can never replicate.
 
-There are two things I am sure of: 
-1. AI won't fix your mix.
-2. Your snare still sucks.
 
-Enjoy.
+
 
 ## TracksMartin - Hits on Demand.
 
@@ -423,12 +418,31 @@ python tracksmartin.py cover CLIP_ID [OPTIONS]
 ```
 
 **Options:**
-- `--tags TEXT` - New style tags for the cover version
+- `--prompt, -p TEXT` - Custom lyrics for the cover
+- `--title, -t TEXT` - Title for the cover version
+- `--tags TEXT` - Style tags (e.g., "pop", "rock")
+- `--model, -m TEXT` - Model version (default: chirp-v5)
+- `--wait/--no-wait` - Wait for generation to complete (default: no-wait)
+- `--download/--no-download` - Download when ready (default: no-download)
+- `--output-dir PATH` - Download directory (default: current directory)
 
 **Examples:**
 
 ```bash
+# Create cover with new style tags
 python tracksmartin.py cover 26c9c592-0566-46cf-bb71-91ac1deaa7b5 --tags "jazz, smooth, lounge"
+
+# Create cover with new lyrics and title
+python tracksmartin.py cover 26c9c592-0566-46cf-bb71-91ac1deaa7b5 \
+  --prompt "[Verse]\nNew lyrics here" \
+  --title "My Jazz Cover"
+
+# Create cover and wait for completion with auto-download
+python tracksmartin.py cover 26c9c592-0566-46cf-bb71-91ac1deaa7b5 \
+  --tags "rock" \
+  --wait \
+  --download \
+  --output-dir ./covers
 ```
 
 ---
@@ -600,6 +614,7 @@ python tracksmartin.py create \
 # Auto-generates: "country, storytelling, trucks"
 ```
 
+
 ## Testing & Examples
 
 ### Test Lyric Generation
@@ -666,7 +681,7 @@ TracksMartin automatically logs all app events and Suno generation details to he
   "timestamp": "2025-10-19T10:30:45",
   "event_type": "create_request",
   "data": {
-    "title": "Happy.. Sometimes",
+    "title": "My Song",
     "tags": "pop, upbeat",
     "model": "chirp-v5",
     "prompt_length": 245
@@ -779,7 +794,6 @@ cat .env
 **"Genre not found" warning:**
 - Use `python tracksmartin.py genres` to see supported genres
 - The system will still work with custom genres, just without specialized templates
-- I will add more genres in the future or happy for contributions
 
 **Lyrics don't match genre well:**
 - Try being more specific with mood
@@ -874,7 +888,7 @@ The `TracksMartinClient` class provides the following methods:
 - `create_music_with_description(gpt_description_prompt, make_instrumental, mv)` - No-custom mode with AI-generated music from descriptions
 - `extend_music(clip_id, prompt, continue_at, tags, title)` - Extend existing songs
 - `concat_music(clip_ids)` - Concatenate multiple clips
-- `cover_music(clip_id, new_prompt, new_tags)` - Create cover versions with different styles
+- `cover_music(continue_clip_id, prompt, title, tags, custom_mode, mv)` - Create cover versions with custom lyrics and styles
 
 **Audio Processing:**
 - `stems_basic(clip_id)` - Extract basic stems (vocals + instrumentals)
@@ -924,5 +938,6 @@ Available AI models (from oldest to newest):
   - [Extend Music](https://docs.sunoapi.com/extend-suno-music)
   - [Get Credits](https://docs.sunoapi.com/get-credits)
 - [Click Documentation](https://click.palletsprojects.com/)
+- Example Scripts:
 
 
