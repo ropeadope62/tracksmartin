@@ -116,7 +116,7 @@ class TracksMartinClient:
         Create music with custom lyrics and style
         
         Args:
-            prompt: Lyrics or description for the song
+            prompt: Lyrics (when not instrumental) or description (when instrumental)
             title: Title of the song
             tags: Style tags (e.g., "future pop, energetic, 120 bpm, female vocals")
             style_weight: Weight for style adherence (0.0 to 1.0).
@@ -133,10 +133,16 @@ class TracksMartinClient:
         # Prepare the base payload for the request
         payload = {
             "custom_mode": custom_mode,
-            "prompt": prompt,
             "make_instrumental": make_instrumental,
             "mv": mv
         }
+        
+        # For instrumental tracks, use prompt as gpt_description_prompt
+        # For vocal tracks, use prompt as lyrics
+        if make_instrumental:
+            payload["gpt_description_prompt"] = prompt
+        else:
+            payload["prompt"] = prompt
         
         # Add optional parameters if provided
         if title:
@@ -423,6 +429,19 @@ class TracksMartinClient:
         payload = {"clip_id": clip_id}
         return self._make_request("POST", "suno/wav", data=payload)
     
+    def upload_music(self, url: str) -> Dict[str, Any]:
+        """
+        Upload local music from a URL and get a clip_id for use in other ops
+        
+        Args:
+            url: Public URL to the audio file to upload
+            
+        Returns:
+            Dictionary containing clip_id of the uploaded music
+        """
+        payload = {"url": url}
+        return self._make_request("POST", "suno/upload", data=payload)
+    
     def get_credits(self) -> Dict[str, Any]:
         """
         Get remaining API credits
@@ -431,24 +450,6 @@ class TracksMartinClient:
             Dictionary containing credit information
         """
         return self._make_request("GET", "get-credits")
-    
-    # ==================== UPLOAD ====================
-    #todo: Implement upload_music method
-    def upload_music(
-        self,
-        file_path: str,
-        title: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """
-        Upload an audio file to Suno
-        
-        Args:
-            file_path: Path to the audio file
-            title: Title for the uploaded file
-            
-        Returns:
-            Dictionary containing upload details and clip_id
-        """
     
     # ==================== HELPER METHODS ====================
     
