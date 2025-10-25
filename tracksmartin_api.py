@@ -255,29 +255,42 @@ class TracksMartinClient:
     
     def cover_music(
         self,
-        clip_id: str,
-        new_prompt: Optional[str] = None,
-        new_tags: Optional[str] = None
+        continue_clip_id: str,
+        prompt: Optional[str] = None,
+        title: Optional[str] = None,
+        tags: Optional[str] = None,
+        custom_mode: bool = True,
+        mv: str = "chirp-v5"
     ) -> Dict[str, Any]:
         """
-        Create a cover version of existing music
+        Create a cover version of existing music (Suno API)
         
         Args:
-            clip_id: ID of the clip to cover
-            new_prompt: New lyrics for the cover
-            new_tags: New style tags
+            continue_clip_id: ID of the clip to cover (required)
+            prompt: New lyrics for the cover
+            title: Title for the cover version
+            tags: Style tags (e.g., "pop", "rock")
+            custom_mode: Use custom mode (default: True)
+            mv: Model version (default: chirp-v5)
             
         Returns:
             Dictionary containing task_id for polling
         """
-        payload = {"clip_id": clip_id}
+        payload = {
+            "task_type": "cover_music",
+            "custom_mode": custom_mode,
+            "continue_clip_id": continue_clip_id,
+            "mv": mv
+        }
         
-        if new_prompt:
-            payload["prompt"] = new_prompt
-        if new_tags:
-            payload["tags"] = new_tags
+        if prompt:
+            payload["prompt"] = prompt
+        if title:
+            payload["title"] = title
+        if tags:
+            payload["tags"] = tags
         
-        return self._make_request("POST", "suno/cover", data=payload)
+        return self._make_request("POST", "suno/create", data=payload)
     
     def stems_basic(self, clip_id: str) -> Dict[str, Any]:
         """

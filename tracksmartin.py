@@ -433,9 +433,31 @@ def concat(clip_ids):
 
 @cli.command()
 @click.argument('clip_id')
-@click.option('--tags', help='New style tags for the cover version')
-def cover(clip_id, tags):
-    """Create a cover version of an existing clip"""
+@click.option('--prompt', '-p', help='New lyrics for the cover')
+@click.option('--title', '-t', help='Title for the cover version')
+@click.option('--tags', help='Style tags (e.g., "pop", "rock")')
+@click.option('--model', '-m', default='chirp-v5',
+              help='Model version (default: chirp-v5)')
+@click.option('--wait/--no-wait', default=False,
+              help='Wait for generation to complete')
+@click.option('--download/--no-download', default=False,
+              help='Download when ready')
+@click.option('--output-dir', type=click.Path(), default='.',
+              help='Download directory')
+def cover(clip_id, prompt, title, tags, model, wait, download, output_dir):
+    """Create a cover version of an existing clip
+    
+    \b
+    Examples:
+      # Create cover with new style tags
+      tracksmartin cover <clip_id> --tags "jazz, mellow"
+      
+      # Create cover with new lyrics
+      tracksmartin cover <clip_id> --prompt "[Verse]\\nNew lyrics" 
+      
+      # Create cover with title and wait for completion
+      tracksmartin cover <clip_id> --title "My Cover" --wait --download
+    """
     
     client = TracksMartinClient()
     
@@ -443,16 +465,42 @@ def cover(clip_id, tags):
     
     try:
         response = client.cover_music(
-            clip_id=clip_id,
-            new_tags=tags
+            continue_clip_id=clip_id,
+            prompt=prompt,
+            title=title,
+            tags=tags,
+            mv=model
         )
         
-        task_id = response['task_id']
-        click.secho(f"Cover task created: {task_id}", fg='green')
-        click.echo(f"\nUse 'TracksMartin get {task_id}' to check status")
+        task_id = response.get('task_id')
+        if not task_id:
+            click.secho(f"Error: No task_id in response", 
+                       fg='red', err=True)
+            sys.exit(1)
+        
+        click.secho(f"✓ Cover task created: {task_id}", fg='green')
+        logger.info(f"Cover created - clip_id: {clip_id}, task_id: {task_id}")
+        
+        if wait:
+            click.echo("\nWaiting for cover to complete...")
+            clip = client.poll_until_complete(task_id, verbose=True)
+            click.secho(f"\n✓ Complete! Audio URL: {clip['audio_url']}", 
+                       fg='green')
+            
+            if download and clip.get('audio_url'):
+                cover_title = title or clip.get('title', f'cover_{clip_id}')
+                filename = client.sanitize_filename(cover_title) + ".mp3"
+                filepath = f"{output_dir}/{filename}"
+                
+                client.download_file(clip['audio_url'], filepath)
+                click.secho(f"✓ Downloaded: {filepath}", fg='green')
+                logger.info(f"Downloaded cover: {filepath}")
+        else:
+            click.echo(f"\nUse 'tracksmartin get {task_id}' to check status")
         
     except TracksMartinClientError as e:
         click.secho(f"Error: {e}", fg='red', err=True)
+        logger.error(f"Cover failed: {e}")
         sys.exit(1)
 
 
@@ -854,17 +902,24 @@ def interactive():
                 click.secho(f"✓ Downloaded: {filename}", fg='green')
             
             if click.confirm("Also download as WAV?", default=False):
-                clip_id = clip['id']
-                click.secho(f"\nGetting WAV URL for clip {clip_id}...", fg='cyan')
-                wav_response = client.get_wav(clip_id)
-                wav_url = wav_response.get('wav_url')
-                
-                if wav_url:
-                    wav_filename = client.sanitize_filename(title) + ".wav"
-                    client.download_file(wav_url, wav_filename)
-                    click.secho(f"✓ Downloaded: {wav_filename}", fg='green')
+                clip_id = clip.get('clip_id')
+                if not clip_id:
+                    click.secho("✗ Clip ID not found", fg='red')
                 else:
-                    click.secho("✗ WAV URL not available yet", fg='yellow')
+                    click.secho(f"\nGetting WAV URL for clip {clip_id}...", fg='cyan')
+                    wav_response = client.get_wav_url(clip_id)
+                    
+                    if wav_response.get('message') == 'success' and 'data' in wav_response:
+                        wav_url = wav_response['data'].get('wav_url')
+                        
+                        if wav_url:
+                            wav_filename = client.sanitize_filename(title) + ".wav"
+                            client.download_file(wav_url, wav_filename)
+                            click.secho(f"✓ Downloaded: {wav_filename}", fg='green')
+                        else:
+                            click.secho("✗ WAV URL not available yet", fg='yellow')
+                    else:
+                        click.secho(f"✗ Failed to get WAV URL: {wav_response.get('message')}", fg='red')
         
     except KeyboardInterrupt:
         click.echo("\n\nExiting...")
