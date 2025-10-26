@@ -424,17 +424,34 @@ python tracksmartin.py extend 26c9c592-0566-46cf-bb71-91ac1deaa7b5 \
 
 ---
 
-### `concat` - Concatenate multiple clips
+### `concat` - Get complete song from extended clip
+
+Get the complete concatenated song after using the extend command.
 
 ```bash
-python tracksmartin.py concat CLIP_ID1 CLIP_ID2 [CLIP_ID3 ...]
+python tracksmartin.py concat CLIP_ID [OPTIONS]
 ```
+
+**Options:**
+- `--wait / --no-wait` - Wait for generation to complete
+- `--download / --no-download` - Download when ready
+- `--output-dir PATH` - Download directory (default: current directory)
 
 **Examples:**
 
 ```bash
-python tracksmartin.py concat clip1 clip2 clip3
+# Typical workflow: extend a song, then concat to get the full result
+# Step 1: Extend a clip
+python tracksmartin.py extend abc123-def456 --prompt "[Verse 3]..." --wait
+
+# Step 2: Use the extended clip_id to get the complete song
+python tracksmartin.py concat xyz789-extended --wait --download
+
+# Quick concat with wait and download
+python tracksmartin.py concat xyz789-extended --wait --download --output-dir ./music
 ```
+
+**Note:** This command is used after `extend` to retrieve the full concatenated version of the extended clip. The Suno API creates extended clips in parts, and concat gets you the complete merged result.
 
 ---
 
@@ -565,6 +582,38 @@ python tracksmartin.py wav 26c9c592-0566-46cf-bb71-91ac1deaa7b5
 # Download WAV
 python tracksmartin.py wav 26c9c592-0566-46cf-bb71-91ac1deaa7b5 --download -o mysong.wav
 ```
+
+---
+
+### `upload` - Upload music from URL
+
+Upload music from a publicly accessible URL to get a clip_id that can be used with other commands like extend, cover, or stems.
+
+```bash
+python tracksmartin.py upload URL
+```
+
+**Examples:**
+
+```bash
+# Upload from a public URL
+python tracksmartin.py upload https://example.com/my-song.mp3
+
+# Upload and then use the clip_id for other operations
+python tracksmartin.py upload https://cdn.example.com/track.mp3
+# Returns: Clip ID: abc123-def456-...
+
+# Use the returned clip_id with other commands
+python tracksmartin.py extend abc123-def456 --prompt "[Verse 3]..." --tags "rock"
+python tracksmartin.py cover abc123-def456 --tags "jazz"
+python tracksmartin.py stems abc123-def456 --full
+```
+
+**Note:** The URL must be publicly accessible (not behind authentication). Common sources include:
+- Cloud storage (Google Drive public links, Dropbox, OneDrive)
+- CDN services
+- File hosting services
+- Your own web server
 
 ---
 
@@ -946,13 +995,14 @@ The `TracksMartinClient` class provides the following methods:
 - `create_music(prompt, title, tags, style_weight, weirdness_constraint, negative_tags, custom_mode, make_instrumental, mv)` - Custom mode with full control
 - `create_music_with_description(gpt_description_prompt, make_instrumental, mv)` - No-custom mode with AI-generated music from descriptions
 - `extend_music(continue_clip_id, prompt, continue_at, tags, title, custom_mode, mv)` - Extend existing songs with additional content
-- `concat_music(clip_ids)` - Concatenate multiple clips
+- `concat_music(continue_clip_id)` - Get complete concatenated song from extended clip
 - `cover_music(continue_clip_id, prompt, title, tags, custom_mode, mv)` - Create cover versions with custom lyrics and styles
 
 **Audio Processing:**
 - `stems_basic(clip_id)` - Extract basic stems (vocals + instrumentals)
 - `stems_full(clip_id)` - Extract full stems (vocals, bass, drums, other)
 - `get_wav_url(clip_id)` - Get WAV format URLs
+- `upload_music(url)` - Upload music from a public URL and get a clip_id
 - `download_file(url, output_path, chunk_size)` - Download audio files
 
 **Persona (Voice Cloning):**
@@ -998,6 +1048,5 @@ Available AI models (from oldest to newest):
   - [Get Credits](https://docs.sunoapi.com/get-credits)
 - [Click Documentation](https://click.palletsprojects.com/)
 - Example Scripts:
-
 
 

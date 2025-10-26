@@ -253,19 +253,24 @@ class TracksMartinClient:
     
     def concat_music(
         self,
-        clip_ids: List[str]
+        continue_clip_id: str
     ) -> Dict[str, Any]:
         """
-        Concatenate multiple music clips
+        Concatenate/complete an extended music clip
+        
+        This gets the complete song after an extend operation.
         
         Args:
-            clip_ids: List of clip IDs to concatenate
+            continue_clip_id: ID of the extended clip to concatenate
             
         Returns:
             Dictionary containing task_id for polling
         """
-        payload = {"clip_ids": clip_ids}
-        return self._make_request("POST", "suno/concat", data=payload)
+        payload = {
+            "task_type": "concat_music",
+            "continue_clip_id": continue_clip_id
+        }
+        return self._make_request("POST", "suno/create", data=payload)
     
     def cover_music(
         self,
