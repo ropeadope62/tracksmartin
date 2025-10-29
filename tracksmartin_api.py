@@ -339,25 +339,26 @@ class TracksMartinClient:
     
     def create_persona(
         self,
-        name: str,
-        description: str,
-        sample_clip_ids: List[str]
+        clip_id: str,
+        name: str
     ) -> Dict[str, Any]:
         """
-        Create a vocal persona from sample clips
+        Create a vocal persona from a clip
+        
+        Extract the vocal characteristics from a song clip to create a reusable
+        persona (virtual singer) that can be used in future songs.
         
         Args:
+            clip_id: The clip ID to extract vocal persona from
             name: Name for the persona
-            description: Description of the persona
-            sample_clip_ids: List of clip IDs to use as samples
             
         Returns:
-            Dictionary containing persona_id
+            Dictionary containing persona_id and code
+            
         """
         payload = {
-            "name": name,
-            "description": description,
-            "sample_clip_ids": sample_clip_ids
+            "clip_id": clip_id,
+            "name": name
         }
         return self._make_request("POST", "suno/persona", data=payload)
     
@@ -367,24 +368,31 @@ class TracksMartinClient:
         prompt: str,
         title: Optional[str] = None,
         tags: Optional[str] = None,
+        custom_mode: bool = True,
         mv: str = "chirp-v5"
     ) -> Dict[str, Any]:
         """
-        Create music using a specific persona
+        Create music using a specific persona (virtual singer)
+        
+        Use a previously created persona to generate new music with the same
+        vocal characteristics but different lyrics and style.
         
         Args:
             persona_id: ID of the persona to use
             prompt: Lyrics for the song
             title: Title of the song
-            tags: Style tags
-            mv: Model version
+            tags: Style tags (e.g., "pop, upbeat")
+            custom_mode: Use custom mode (default: True)
+            mv: Model version (default: chirp-v5)
             
         Returns:
             Dictionary containing task_id for polling
         """
         payload = {
+            "task_type": "persona_music",
             "persona_id": persona_id,
             "prompt": prompt,
+            "custom_mode": custom_mode,
             "mv": mv
         }
         
@@ -393,7 +401,7 @@ class TracksMartinClient:
         if tags:
             payload["tags"] = tags
         
-        return self._make_request("POST", "suno/persona/music", data=payload)
+        return self._make_request("POST", "suno/create", data=payload)
     
     # ==================== QUERYING SUNO ====================
     
@@ -409,17 +417,38 @@ class TracksMartinClient:
         """
         return self._make_request("GET", f"suno/task/{task_id}")
     
-    def get_midi(self, clip_id: str) -> Dict[str, Any]:
+    def get_midi(self, clip_id: str, max_attempts: int = 20, interval: int = 10) -> Dict[str, Any]:
         """
-        Get MIDI format URL for a clip
+        Get MIDI format URL for a clip (with polling)
+        
+        This endpoint requires polling as MIDI generation is asynchronous.
+        Will retry until MIDI is ready or max_attempts is reached.
         
         Args:
             clip_id: The clip ID
+            max_attempts: Maximum number of polling attempts (default: 20)
+            interval: Seconds between polling attempts (default: 10)
         Returns:
-            Dictionary containing midi_url
+            Dictionary containing midi_url and instruments data
         """
         payload = {"clip_id": clip_id}
-        return self._make_request("POST", "suno/midi", data=payload)
+        
+        for attempt in range(max_attempts):
+            response = self._make_request("POST", "suno/midi", data=payload)
+            
+            # Check if successful
+            if response.get('code') == 200 and 'data' in response:
+                data = response['data']
+                # Check if midi_url is present (not just "generating midi...")
+                if data.get('midi_url') and not data.get('midi_url').startswith('Failed'):
+                    return response
+            
+            # If still generating, wait and retry
+            if attempt < max_attempts - 1:
+                time.sleep(interval)
+        
+        # Return last response if max attempts reached
+        return response
     
     def get_wav_url(self, clip_id: str) -> Dict[str, Any]:
         """

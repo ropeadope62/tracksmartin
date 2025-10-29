@@ -1,3 +1,5 @@
+![ropeadope62's GitHub Banner](https://raw.githubusercontent.com/ropeadope62/ropeadope62/main/banner.png)
+
 ![Alt text](./assets/tracksmartin_purple.png)
 
 I’m a musician, and to be honest, I find the idea of AI making music kind of unsettling.
@@ -15,7 +17,8 @@ I hope you are able to use this tool for fun and experimentation, but please rem
 
 ## TracksMartin - Hits on Demand.
 
-TracksMartin is a straight forward command-line interface (CLI) built with Python's Click library that streamlines AI-powered music creation. It combines the SunoAPI for professional music generation with OpenAI's GPT-4o-mini for intelligent lyric writing, offering both granular control for experienced users and automated workflows for rapid experimentation.
+TracksMartin is a straight forward command-line interface (CLI) built with Python's Click library that streamlines AI-powered music creation. It combines the SunoAPI for professional music generation with OpenAI's GPT-4o-mini for intell
++igent lyric writing, offering both granular control for experienced users and automated workflows for rapid experimentation.
 
 ## Key Features
 
@@ -617,6 +620,164 @@ python tracksmartin.py stems abc123-def456 --full
 
 ---
 
+### `create-persona` - Create vocal persona from a clip
+
+Create a reusable vocal persona (virtual singer) by extracting vocal characteristics from an existing clip. The persona captures the unique voice, tone, and singing style, which can then be used to generate new songs.
+
+```bash
+python tracksmartin.py create-persona CLIP_ID NAME
+```
+
+**Arguments:**
+- `CLIP_ID` - The clip ID to extract vocal characteristics from (must contain vocals)
+- `NAME` - A descriptive name for your persona
+
+**Examples:**
+
+```bash
+# Create a persona from a clip
+python tracksmartin.py create-persona 4538ed06-ccdd-452d-b90f-c35d29150050 "Smooth Jazz Singer"
+
+# Create a persona with a descriptive name
+python tracksmartin.py create-persona 26c9c592-0566-46cf-bb71-91ac1deaa7b5 "Energetic Rock Vocalist"
+
+# Create a persona for later use
+python tracksmartin.py create-persona abc123-def456 "My Custom Voice"
+# Returns: Persona ID: c08806c1-34fa-4290-a78d-0c623eb1dd1c
+```
+
+**How it works:**
+1. Provide a clip_id from a previously generated song with vocals
+2. Give your persona a descriptive name
+3. Get back a persona_id that captures the vocal characteristics
+4. Use the persona_id to create new songs with the same voice
+
+**Important notes:**
+- The source clip must contain vocals (instrumental-only clips won't work)
+- The persona captures voice characteristics, not lyrics or music style
+- Each persona extraction consumes API credits
+
+---
+
+### `use-persona` - Create music with a persona
+
+Generate new music using a previously created vocal persona. The persona provides the vocal characteristics while you provide new lyrics and style.
+
+```bash
+python tracksmartin.py use-persona PERSONA_ID [OPTIONS]
+```
+
+**Arguments:**
+- `PERSONA_ID` - The persona ID from a previously created persona
+
+**Options:**
+- `--prompt, -p TEXT` - Lyrics for the song (required unless using --prompt-file)
+- `--prompt-file, -f FILE` - Read lyrics from a file
+- `--title, -t TEXT` - Title of the song
+- `--tags TEXT` - Style tags (e.g., "pop, upbeat, 120 bpm")
+- `--model, -m TEXT` - Model version (default: chirp-v5)
+- `--wait/--no-wait` - Wait for generation to complete (default: no-wait)
+- `--download/--no-download` - Download when ready (default: no-download)
+- `--output-dir PATH` - Download directory (default: current directory)
+
+**Examples:**
+
+```bash
+# Create a song with a persona
+python tracksmartin.py use-persona c08806c1-34fa-4290-a78d-0c623eb1dd1c \
+  --prompt "[Verse]\nNew lyrics here\n[Chorus]\nCatchy hook" \
+  --title "My New Song" \
+  --tags "pop, upbeat"
+
+# Use lyrics from a file
+python tracksmartin.py use-persona c08806c1-34fa-4290-a78d-0c623eb1dd1c \
+  --prompt-file lyrics.txt \
+  --tags "rock, energetic" \
+  --wait --download
+
+# Quick generation with minimal options
+python tracksmartin.py use-persona c08806c1-34fa-4290-a78d-0c623eb1dd1c \
+  -p "[Verse]\nLyrics go here\n[Chorus]\nHook" \
+  --wait
+
+# Generate multiple songs with same voice
+python tracksmartin.py use-persona c08806c1-34fa-4290-a78d-0c623eb1dd1c \
+  -f song1.txt --title "Song 1" --tags "ballad" --wait --download
+
+python tracksmartin.py use-persona c08806c1-34fa-4290-a78d-0c623eb1dd1c \
+  -f song2.txt --title "Song 2" --tags "upbeat pop" --wait --download
+```
+
+**Workflow example:**
+```bash
+# 1. Create a song with desired vocals
+python tracksmartin.py create -t "Original Song" -f lyrics.txt --tags "jazz"
+
+# 2. Get the clip_id from the generated song
+# Returns: Clip ID: 4538ed06-ccdd-452d-b90f-c35d29150050
+
+# 3. Create a persona from that clip
+python tracksmartin.py create-persona 4538ed06-ccdd-452d-b90f-c35d29150050 "Jazz Vocalist"
+# Returns: Persona ID: c08806c1-34fa-4290-a78d-0c623eb1dd1c
+
+# 4. Use that persona for new songs
+python tracksmartin.py use-persona c08806c1-34fa-4290-a78d-0c623eb1dd1c \
+  -p "[Verse]\nNew song with same voice" \
+  --title "New Song" \
+  --wait --download
+```
+
+---
+
+### `midi` - Get MIDI format
+
+Get MIDI file URL and detailed instrument/note data for a clip. Works with complete songs or individual stem tracks.
+
+**Note:** MIDI generation is asynchronous. The command will automatically poll until the MIDI is ready.
+
+```bash
+python tracksmartin.py midi CLIP_ID [OPTIONS]
+```
+
+**Options:**
+- `--download/--no-download` - Download the MIDI file
+- `--output, -o FILE` - Output filename (default: <clip_id>.mid)
+- `--show-instruments` - Display instrument and note information
+- `--wait/--no-wait` - Wait for MIDI generation to complete (default: True)
+- `--max-attempts INT` - Maximum polling attempts (default: 20)
+- `--poll-interval INT` - Seconds between polling attempts (default: 10)
+
+**Examples:**
+
+```bash
+# Get MIDI URL (with automatic polling)
+python tracksmartin.py midi 26c9c592-0566-46cf-bb71-91ac1deaa7b5
+
+# Download MIDI file
+python tracksmartin.py midi 26c9c592-0566-46cf-bb71-91ac1deaa7b5 --download -o mysong.mid
+
+# Show instrument information
+python tracksmartin.py midi 26c9c592-0566-46cf-bb71-91ac1deaa7b5 --show-instruments
+
+# Download with instrument details
+python tracksmartin.py midi 26c9c592-0566-46cf-bb71-91ac1deaa7b5 --download --show-instruments
+
+# Single attempt without polling (if you want to check status quickly)
+python tracksmartin.py midi 26c9c592-0566-46cf-bb71-91ac1deaa7b5 --no-wait
+
+# Custom polling settings (faster checks, more attempts)
+python tracksmartin.py midi 26c9c592-0566-46cf-bb71-91ac1deaa7b5 --max-attempts 30 --poll-interval 5
+```
+
+**What you get:**
+- MIDI file URL for download
+- Instrument names (e.g., "Synth Voice", "Bass", "Drums")
+- Note data (pitch, timing, velocity) for each instrument
+- Works with both complete songs and individual stems
+- Automatic polling until MIDI generation completes
+
+---
+
 ### `credits` - Check API credits
 
 ```bash
@@ -1002,12 +1163,13 @@ The `TracksMartinClient` class provides the following methods:
 - `stems_basic(clip_id)` - Extract basic stems (vocals + instrumentals)
 - `stems_full(clip_id)` - Extract full stems (vocals, bass, drums, other)
 - `get_wav_url(clip_id)` - Get WAV format URLs
+- `get_midi(clip_id)` - Get MIDI file URL and instrument/note data
 - `upload_music(url)` - Upload music from a public URL and get a clip_id
 - `download_file(url, output_path, chunk_size)` - Download audio files
 
 **Persona (Voice Cloning):**
-- `create_persona(name, description, sample_clip_ids)` - Create a vocal persona from sample clips
-- `create_music_with_persona(persona_id, prompt, title, tags, mv)` - Create music using a specific persona
+- `create_persona(clip_id, name)` - Create a vocal persona from a clip's vocals
+- `create_music_with_persona(persona_id, prompt, title, tags, custom_mode, mv)` - Create music using a specific persona
 
 **Utilities:**
 - `get_music(task_id)` - Retrieve music by task ID

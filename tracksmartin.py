@@ -11,6 +11,7 @@ from lyrics_generator import LyricsGenerator, LyricsGeneratorError
 import sys
 import logging
 import os
+import time
 from datetime import datetime
 
 
@@ -457,30 +458,59 @@ def extend(clip_id, prompt, title, tags, continue_at, model, wait, download, out
 
 
 @cli.command()
-@click.argument('clip_ids', nargs=-1, required=True)
-def concat(clip_ids):
-    """Concatenate multiple clips into one song
+@click.argument('clip_id')
+@click.option('--wait/--no-wait', default=False,
+              help='Wait for generation to complete')
+@click.option('--download/--no-download', default=False,
+              help='Download when ready')
+@click.option('--output-dir', type=click.Path(), default='.',
+              help='Download directory')
+def concat(clip_id, wait, download, output_dir):
+    """Get the complete song from an extended clip
     
-    Example: TracksMartin concat clip1 clip2 clip3
+    After using the extend command, use concat to get the full concatenated result.
+    
+    \b
+    Example workflow:
+      1. Extend a clip: tracksmartin extend <clip_id> --prompt "..." --wait
+      2. Get the extended clip_id from the result
+      3. Concat it: tracksmartin concat <extended_clip_id> --wait --download
     """
-    
-    if len(clip_ids) < 2:
-        click.secho("Error: At least 2 clip IDs required", fg='red', err=True)
-        sys.exit(1)
     
     client = TracksMartinClient()
     
-    click.secho(f"\nConcatenating {len(clip_ids)} clips", fg='cyan', bold=True)
+    click.secho(f"\nGetting concatenated song for clip: {clip_id}", fg='cyan', bold=True)
     
     try:
-        response = client.concat_music(list(clip_ids))
+        response = client.concat_music(clip_id)
         
-        task_id = response['task_id']
-        click.secho(f"Concatenation task created: {task_id}", fg='green')
-        click.echo(f"\nUse 'TracksMartin get {task_id}' to check status")
+        task_id = response.get('task_id')
+        if not task_id:
+            click.secho("Error: No task_id in response", fg='red', err=True)
+            sys.exit(1)
+        
+        click.secho(f"✓ Concatenation task created: {task_id}", fg='green')
+        logger.info(f"Concat created - clip_id: {clip_id}, task_id: {task_id}")
+        
+        if wait:
+            click.echo("\nWaiting for concatenation to complete...")
+            clip = client.poll_until_complete(task_id, verbose=True)
+            click.secho(f"\n✓ Complete! Audio URL: {clip['audio_url']}", fg='green')
+            
+            if download and clip.get('audio_url'):
+                concat_title = clip.get('title', f'concat_{clip_id}')
+                filename = client.sanitize_filename(concat_title) + ".mp3"
+                filepath = f"{output_dir}/{filename}"
+                
+                client.download_file(clip['audio_url'], filepath)
+                click.secho(f"✓ Downloaded: {filepath}", fg='green')
+                logger.info(f"Downloaded concat: {filepath}")
+        else:
+            click.echo(f"\nUse 'tracksmartin get {task_id}' to check status")
         
     except TracksMartinClientError as e:
         click.secho(f"Error: {e}", fg='red', err=True)
+        logger.error(f"Concat failed: {e}")
         sys.exit(1)
 
 
@@ -690,6 +720,339 @@ def wav(clip_id, download, output):
 
 
 @cli.command()
+@click.argument('clip_id')
+@click.option('--download/--no-download', default=False,
+              help='Download the MIDI file')
+@click.option('--output', '-o', help='Output filename (default: <clip_id>.mid)')
+@click.option('--show-instruments', is_flag=True,
+              help='Display instrument and note information')
+@click.option('--wait/--no-wait', default=True,
+              help='Wait for MIDI generation to complete (default: True)')
+@click.option('--max-attempts', default=20,
+              help='Maximum polling attempts (default: 20)')
+@click.option('--poll-interval', default=10,
+              help='Seconds between polling attempts (default: 10)')
+def midi(clip_id, download, output, show_instruments, wait, max_attempts, poll_interval):
+    """Get MIDI format URL and data for a clip
+    
+    \b
+    Works with complete songs or individual stem tracks.
+    Returns both a MIDI file URL and detailed instrument/note data.
+    
+    \b
+    Note: MIDI generation is asynchronous and may take time.
+    Use --wait to poll until ready (default), or --no-wait for single attempt.
+    """
+    
+    client = TracksMartinClient()
+    
+    click.echo(f"Getting MIDI data for: {clip_id}")
+    
+    try:
+        if wait:
+            click.echo(f"Polling for MIDI (max {max_attempts} attempts, {poll_interval}s interval)...")
+            
+            # Poll with progress indication
+            for attempt in range(1, max_attempts + 1):
+                click.echo(f"  Attempt {attempt}/{max_attempts}...", nl=False)
+                
+                response = client.get_midi(clip_id, max_attempts=1, interval=0)
+                
+                if response.get('code') == 200 and 'data' in response:
+                    data = response['data']
+                    midi_url = data.get('midi_url', '')
+                    
+                    # Check if ready (not "Failed: generating midi...")
+                    if midi_url and not 'Failed' in midi_url and not 'generating' in midi_url:
+                        click.secho(" ✓ Ready!", fg='green')
+                        break
+                    else:
+                        click.secho(" (still generating)", fg='yellow')
+                
+                if attempt < max_attempts:
+                    time.sleep(poll_interval)
+            else:
+                click.secho("\n⚠ Max attempts reached. MIDI may still be generating.", fg='yellow')
+                click.echo("Try again in a few moments.")
+                return
+        else:
+            response = client.get_midi(clip_id, max_attempts=1, interval=0)
+        
+        if response.get('code') == 200 and 'data' in response:
+            data = response['data']
+            midi_url = data.get('midi_url')
+            instruments = data.get('instruments', [])
+            
+            click.secho(f"\n✓ MIDI URL: {midi_url}", fg='green')
+            
+            if show_instruments and instruments:
+                click.echo("\n" + "="*60)
+                click.secho("Instrument Information:", fg='cyan', bold=True)
+                click.echo("="*60)
+                
+                for idx, instrument in enumerate(instruments, 1):
+                    inst_name = instrument.get('name', 'Unknown')
+                    notes = instrument.get('notes', [])
+                    click.echo(f"\n{idx}. {inst_name}")
+                    click.echo(f"   Notes: {len(notes)}")
+                    
+                    if notes:
+                        # Show first few notes as sample
+                        sample_size = min(3, len(notes))
+                        click.echo(f"   Sample notes:")
+                        for note in notes[:sample_size]:
+                            pitch = note.get('pitch')
+                            start = note.get('start')
+                            end = note.get('end')
+                            velocity = note.get('velocity')
+                            click.echo(f"     Pitch: {pitch}, "
+                                     f"Start: {start:.2f}s, "
+                                     f"End: {end:.2f}s, "
+                                     f"Velocity: {velocity:.2f}")
+                
+                click.echo("="*60)
+            
+            if download and midi_url:
+                filename = output or f"{clip_id}.mid"
+                
+                with click.progressbar(length=1, label='Downloading MIDI') as bar:
+                    client.download_file(midi_url, filename)
+                    bar.update(1)
+                
+                click.secho(f"Downloaded: {filename}", fg='green')
+                logger.info(f"Downloaded MIDI: {filename}")
+        else:
+            click.secho(f"Failed: {response.get('message', 'Unknown error')}", 
+                       fg='red')
+            
+    except TracksMartinClientError as e:
+        click.secho(f"Error: {e}", fg='red', err=True)
+        sys.exit(1)
+
+
+@cli.command()
+@click.argument('url')
+def upload(url):
+    """Upload music from a public URL to get a clip_id
+    
+    \b
+    The URL must be publicly accessible (e.g., from cloud storage, CDN, etc.)
+    Once uploaded, you'll receive a clip_id that can be used with other commands
+    like extend, cover, or stems.
+    
+    \b
+    Examples:
+      # Upload from a public URL
+      tracksmartin upload https://example.com/my-song.mp3
+      
+      # Use the returned clip_id with other commands
+      tracksmartin extend <clip_id> --prompt "[Verse 3]..." --tags "rock"
+      tracksmartin cover <clip_id> --tags "jazz"
+      tracksmartin stems <clip_id> --full
+    """
+    
+    client = TracksMartinClient()
+    
+    click.secho(f"\nUploading music from URL...", fg='cyan', bold=True)
+    click.echo(f"URL: {url}")
+    
+    try:
+        with click.progressbar(length=1, label='Uploading') as bar:
+            response = client.upload_music(url)
+            bar.update(1)
+        
+        if response.get('code') == 200 and response.get('message') == 'success':
+            clip_id = response.get('clip_id')
+            click.secho(f"\n✓ Upload successful!", fg='green', bold=True)
+            click.echo(f"Clip ID: {clip_id}")
+            logger.info(f"Music uploaded - clip_id: {clip_id}, url: {url}")
+            
+            click.echo("\n" + "="*60)
+            click.echo("You can now use this clip_id with other commands:")
+            click.echo(f"  • Extend:  tracksmartin extend {clip_id} --prompt '...'")
+            click.echo(f"  • Cover:   tracksmartin cover {clip_id} --tags '...'")
+            click.echo(f"  • Stems:   tracksmartin stems {clip_id}")
+            click.echo(f"  • Get WAV: tracksmartin wav {clip_id}")
+            click.echo("="*60)
+        else:
+            click.secho(f"Upload failed: {response.get('message', 'Unknown error')}", 
+                       fg='red', err=True)
+            sys.exit(1)
+            
+    except TracksMartinClientError as e:
+        click.secho(f"Error: {e}", fg='red', err=True)
+        logger.error(f"Upload failed: {e}")
+        sys.exit(1)
+
+
+@cli.command()
+@click.argument('clip_id')
+@click.argument('name')
+def create_persona(clip_id, name):
+    """Create a vocal persona from a clip's vocals
+    
+    \b
+    Extract the vocal characteristics from a song to create a reusable persona
+    (virtual singer) that can be used to generate new songs with the same voice.
+    
+    \b
+    How it works:
+      1. Provide a clip_id from a previously generated song
+      2. Give your persona a name
+      3. Get back a persona_id that can be used with the 'create' command
+    
+    \b
+    Examples:
+      # Create a persona from a clip
+      tracksmartin create-persona 4538ed06-ccdd-452d-b90f-c35d29150050 "Smooth Jazz Singer"
+      
+      # Use the persona_id to create new songs with that voice
+      # (Note: Persona usage would be added to the create command)
+    
+    \b
+    Note: The clip must contain vocals (not instrumental-only tracks).
+    """
+    
+    client = TracksMartinClient()
+    
+    click.secho(f"\nCreating vocal persona from clip...", fg='cyan', bold=True)
+    click.echo(f"Clip ID: {clip_id}")
+    click.echo(f"Persona Name: {name}")
+    
+    try:
+        with click.progressbar(length=1, label='Creating persona') as bar:
+            response = client.create_persona(clip_id, name)
+            bar.update(1)
+        
+        if response.get('code') == 200:
+            persona_id = response.get('persona_id')
+            click.secho(f"\n✓ Persona created successfully!", fg='green', bold=True)
+            click.echo(f"Persona ID: {persona_id}")
+            click.echo(f"Name: {name}")
+            logger.info(f"Persona created - persona_id: {persona_id}, name: {name}, clip_id: {clip_id}")
+            
+            click.echo("\n" + "="*60)
+            click.secho("What's next?", fg='cyan', bold=True)
+            click.echo("You can now use this persona_id to create new songs with")
+            click.echo("the same vocal characteristics. The persona captures the")
+            click.echo("unique voice, tone, and singing style from the original clip.")
+            click.echo("\n" + "="*60)
+        else:
+            click.secho(f"Failed: {response.get('message', 'Unknown error')}", 
+                       fg='red', err=True)
+            sys.exit(1)
+            
+    except TracksMartinClientError as e:
+        click.secho(f"Error: {e}", fg='red', err=True)
+        logger.error(f"Persona creation failed: {e}")
+        sys.exit(1)
+
+
+@cli.command()
+@click.argument('persona_id')
+@click.option('--prompt', '-p', help='Lyrics for the song')
+@click.option('--prompt-file', '-f', type=click.Path(exists=True),
+              help='Read lyrics from a file')
+@click.option('--title', '-t', help='Title of the song')
+@click.option('--tags', help='Style tags (e.g., "pop, upbeat, 120 bpm")')
+@click.option('--model', '-m', default='chirp-v5',
+              help='Model version (default: chirp-v5)')
+@click.option('--wait/--no-wait', default=False,
+              help='Wait for generation to complete')
+@click.option('--download/--no-download', default=False,
+              help='Download when ready')
+@click.option('--output-dir', type=click.Path(), default='.',
+              help='Download directory')
+def use_persona(persona_id, prompt, prompt_file, title, tags, model, wait, download, output_dir):
+    """Create music using a persona (virtual singer)
+    
+    \b
+    Use a previously created vocal persona to generate new music with that voice.
+    The persona provides the vocal characteristics while you provide new lyrics.
+    
+    \b
+    Examples:
+      # Create song with persona
+      tracksmartin use-persona c08806c1-34fa-4290-a78d-0c623eb1dd1c \\
+        --prompt "[Verse]\\nNew lyrics here\\n[Chorus]\\nCatchy hook" \\
+        --title "My New Song" \\
+        --tags "pop, upbeat"
+      
+      # Use lyrics from file
+      tracksmartin use-persona <persona_id> \\
+        --prompt-file lyrics.txt \\
+        --tags "rock, energetic" \\
+        --wait --download
+      
+      # Quick generation with minimal options
+      tracksmartin use-persona <persona_id> \\
+        -p "[Verse]\\nLyrics..." \\
+        --wait
+    """
+    
+    client = TracksMartinClient()
+    
+    # Read lyrics from file if provided
+    if prompt_file:
+        with open(prompt_file, 'r', encoding='utf-8') as f:
+            prompt = f.read()
+    
+    if not prompt:
+        click.secho("Error: Either --prompt or --prompt-file is required", 
+                   fg='red', err=True)
+        sys.exit(1)
+    
+    click.secho("\nCreating music with persona...", fg='cyan', bold=True)
+    click.echo(f"Persona ID: {persona_id}")
+    if title:
+        click.echo(f"Title: {title}")
+    if tags:
+        click.echo(f"Tags: {tags}")
+    click.echo(f"Model: {model}")
+    
+    try:
+        response = client.create_music_with_persona(
+            persona_id=persona_id,
+            prompt=prompt,
+            title=title,
+            tags=tags,
+            mv=model
+        )
+        
+        task_id = response.get('task_id')
+        if not task_id:
+            click.secho("Error: No task_id in response", fg='red', err=True)
+            sys.exit(1)
+        
+        click.secho(f"✓ Task created: {task_id}", fg='green')
+        logger.info(f"Persona music - persona_id: {persona_id}, task_id: {task_id}")
+        
+        if wait:
+            click.echo("\nWaiting for generation to complete...")
+            clip = client.poll_until_complete(task_id, verbose=True)
+            click.secho(f"\n✓ Complete! Audio URL: {clip['audio_url']}", fg='green')
+            
+            if download and clip.get('audio_url'):
+                song_title = title or clip.get('title', f'persona_{task_id}')
+                filename = client.sanitize_filename(song_title) + ".mp3"
+                filepath = f"{output_dir}/{filename}"
+                
+                client.download_file(clip['audio_url'], filepath)
+                click.secho(f"✓ Downloaded: {filepath}", fg='green')
+                logger.info(f"Downloaded: {filepath}")
+        else:
+            click.echo("\nTo check status later:")
+            click.echo(f"  python tracksmartin.py get {task_id}")
+            click.echo("\nTo download when ready:")
+            click.echo(f"  python tracksmartin.py get {task_id} --download")
+    
+    except TracksMartinClientError as e:
+        click.secho(f"Error: {e}", fg='red', err=True)
+        logger.error(f"Persona music creation failed: {e}")
+        sys.exit(1)
+
+
+@cli.command()
 def credits():
     """Check remaining API credits"""
     
@@ -825,11 +1188,6 @@ def interactive():
                     click.echo("Cancelled.")
                     return
             
-            # Ask about tags
-            if click.confirm(f"\nUse suggested tags: '{suggested_tags}'?", default=True):
-                tags = suggested_tags
-            else:
-                tags = click.prompt("Enter custom style tags", type=str)
         
         else:
             # Manual entry path
@@ -873,8 +1231,8 @@ def interactive():
                     # User entered a genre name
                     genre = genre_input
             
+            # For manual path, set suggested_tags if genre is known
             if genre:
-                # Auto-suggest tags based on genre
                 genre_tags = {
                     'pop': 'pop, catchy, melodic',
                     'rock': 'rock, energetic, guitar-driven',
@@ -889,54 +1247,120 @@ def interactive():
                     'indie': 'indie, alternative, artistic',
                     'reggae': 'reggae, rhythmic, positive'
                 }
-                suggested = genre_tags.get(genre.lower(), genre)
-                tags = click.prompt(f"Style tags", default=suggested, type=str)
+                suggested_tags = genre_tags.get(genre.lower(), genre)
             else:
-                click.echo("\n" + "="*60)
-                click.echo("Style tags control the musical style, NOT the lyrics content.")
-                click.echo("Examples: 'pop rock, energetic, 120 bpm, electric guitar'")
-                click.echo("          'jazz, mellow, piano, saxophone'")
-                click.echo("="*60)
-                tags = click.prompt("\nStyle tags", default="", type=str)
+                suggested_tags = ""
         
-        # Advanced options (common for both paths)
-        if click.confirm("\nUse advanced options (style weight, weirdness, negative tags)?", 
-                        default=False):
-            negative_tags = click.prompt("Negative tags (tags to avoid)", 
+        # ========== MUSICAL STYLE CONFIGURATION (Common for both paths) ==========
+        click.echo("\n" + "="*60)
+        click.secho("MUSICAL STYLE CONFIGURATION", fg='cyan', bold=True)
+        click.echo("="*60)
+        
+        # 1. STYLE TAGS (Most Important!)
+        click.echo("\nStyle tags define the MUSICAL SOUND (not lyric content)")
+        click.echo("\nWhat to include in style tags:")
+        click.echo("  • Genre/subgenre (indie rock, synthwave, trap, etc.)")
+        click.echo("  • Instruments (electric guitar, synthesizer, 808 drums)")
+        click.echo("  • Tempo (120 bpm, slow tempo, uptempo)")
+        click.echo("  • Vocal style (female vocals, raspy voice, smooth)")
+        click.echo("  • Production (lo-fi, polished, raw, reverb)")
+        click.echo("  • Energy/mood (energetic, chill, aggressive, mellow)")
+        
+        click.echo("\nExample tag combinations:")
+        click.echo("  • 'indie rock, electric guitar, energetic, 140 bpm'")
+        click.echo("  • 'synthwave, retro, 80s, synthesizer, drums, 128 bpm'")
+        click.echo("  • 'lo-fi hip-hop, jazz samples, mellow, vinyl crackle, 90 bpm'")
+        click.echo("  • 'acoustic folk, fingerpicking, intimate, female vocals'")
+        click.echo("  • 'metal, aggressive, distorted guitar, double bass, 160 bpm'")
+        
+        if suggested_tags:
+            click.echo(f"\nSuggested tags: {suggested_tags}")
+            if click.confirm(f"Use suggested tags?", default=True):
+                tags = suggested_tags
+            else:
+                tags = click.prompt("Enter your style tags (comma-separated)", type=str)
+        else:
+            tags = click.prompt("\nEnter style tags (comma-separated)", type=str)
+        
+        # 2. NEGATIVE TAGS
+        click.echo("\n" + "-"*60)
+        if click.confirm("Specify sounds to AVOID?", default=False):
+            click.echo("Examples: 'no autotune', 'no heavy drums', 'no synthesizer'")
+            negative_tags = click.prompt("Negative tags (comma-separated)", 
                                         default="", type=str)
-            style_weight = click.prompt("Style weight (0.0-1.0, higher = stricter adherence)", 
-                                       type=float, default=None, show_default=False)
-            weirdness = click.prompt("Weirdness/creativity (0.0-1.0, higher = more creative)", 
-                                    type=float, default=None, show_default=False)
         else:
             negative_tags = None
+        
+        # 3. VOCAL STYLE (before instrumental choice)
+        click.echo("\n" + "-"*60)
+        instrumental = click.confirm("Generate instrumental version (no vocals)?", 
+                                    default=False)
+        
+        if not instrumental:
+            vocal_style = click.prompt(
+                "Vocal style (optional - e.g., 'raspy', 'smooth', 'powerful')",
+                default="",
+                type=str
+            )
+            if vocal_style:
+                tags = f"{tags}, {vocal_style} vocals"
+        
+        # 4. STYLE ADHERENCE
+        click.echo("\n" + "-"*60)
+        click.secho("Style Weight:", fg='yellow', bold=True)
+        click.echo("How strictly should the AI follow your style tags?")
+        click.echo("  0.0-0.3 = Very loose (AI adds creative interpretation)")
+        click.echo("  0.4-0.6 = Balanced (recommended)")
+        click.echo("  0.7-1.0 = Strict adherence to your exact tags")
+        click.echo("-"*60)
+        
+        if click.confirm("Set custom style weight?", default=False):
+            style_weight = click.prompt("Style weight (0.0-1.0)", 
+                                       type=float, default=0.5)
+        else:
             style_weight = None
+        
+        # 5. CREATIVITY/WEIRDNESS
+        click.echo("\n" + "-"*60)
+        click.secho("Weirdness/Creativity:", fg='yellow', bold=True)
+        click.echo("How experimental should the sound be?")
+        click.echo("  0.0-0.3 = Conventional, familiar structures")
+        click.echo("  0.4-0.6 = Balanced creativity")
+        click.echo("  0.7-1.0 = Experimental, unusual, avant-garde")
+        click.echo("-"*60)
+        
+        if click.confirm("Set custom weirdness level?", default=False):
+            weirdness = click.prompt("Weirdness (0.0-1.0)", 
+                                    type=float, default=0.3)
+        else:
             weirdness = None
         
-        instrumental = click.confirm("Generate instrumental only?", default=False)
-        
+        # 6. MODEL VERSION
+        click.echo("\n" + "-"*60)
         model = click.prompt(
             "Model version",
             type=click.Choice(['chirp-v3-5', 'chirp-v4', 'chirp-v4-5', 'chirp-v5']),
             default='chirp-v5'
         )
         
-        click.echo("\n" + "="*50)
-        click.echo("Summary:")
+        # SUMMARY
+        click.echo("\n" + "="*60)
+        click.secho("GENERATION SUMMARY", fg='green', bold=True)
+        click.echo("="*60)
         click.echo(f"  Title: {title}")
         if genre:
             click.echo(f"  Genre: {genre}")
-        click.echo(f"  Style Tags: {tags or 'default (AI will choose)'}")
-        click.echo(f"  Prompt/Lyrics: {len(prompt)} characters")
+        click.echo(f"  Lyrics: {len(prompt)} characters")
+        click.echo(f"\n  Style Tags: {tags}")
         if negative_tags:
-            click.echo(f"  Negative tags: {negative_tags}")
+            click.echo(f"  Negative Tags: {negative_tags}")
+        click.echo(f"\n  Instrumental: {'Yes (no vocals)' if instrumental else 'No (with vocals)'}")
         if style_weight is not None:
-            click.echo(f"  Style weight: {style_weight}")
+            click.echo(f"  Style Weight: {style_weight}")
         if weirdness is not None:
             click.echo(f"  Weirdness: {weirdness}")
         click.echo(f"  Model: {model}")
-        click.echo(f"  Instrumental: {instrumental}")
-        click.echo("="*50)
+        click.echo("="*60)
         
         if not click.confirm("\nProceed with generation?"):
             click.echo("Cancelled.")
