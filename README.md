@@ -1,5 +1,3 @@
-![ropeadope62's GitHub Banner](https://raw.githubusercontent.com/ropeadope62/ropeadope62/main/banner.png)
-
 ![Alt text](./assets/tracksmartin_purple.png)
 
 I’m a musician, and to be honest, I find the idea of AI making music kind of unsettling.
@@ -1210,5 +1208,6 @@ Available AI models (from oldest to newest):
   - [Get Credits](https://docs.sunoapi.com/get-credits)
 - [Click Documentation](https://click.palletsprojects.com/)
 - Example Scripts:
+
 
 
