@@ -1,3 +1,5 @@
+![ropeadope62's GitHub Banner](https://raw.githubusercontent.com/ropeadope62/main/banner.png)
+
 ![Alt text](./assets/tracksmartin_purple.png)
 
 I’m a musician, and to be honest, I find the idea of AI making music kind of unsettling.
@@ -524,6 +526,144 @@ python tracksmartin.py cover 26c9c592-0566-46cf-bb71-91ac1deaa7b5 \
 
 ---
 
+### `remaster` - AI audio enhancement
+
+Remaster a clip with AI-powered audio enhancement to improve quality. Best results with clips generated within 24 hours.
+
+```bash
+python tracksmartin.py remaster CLIP_ID [OPTIONS]
+```
+
+**Options:**
+- `--variation, -v [subtle|normal|high]` - Intensity of changes (default: normal)
+  - `subtle` - Minor quality improvements, preserves original character
+  - `normal` - Moderate enhancements, balanced improvement
+  - `high` - Significant changes, maximum enhancement
+- `--model, -m [chirp-v4|chirp-v4-5-plus|chirp-v5]` - Model version (default: chirp-v5)
+- `--wait/--no-wait` - Wait for remaster to complete (default: wait)
+- `--download/--no-download` - Download when ready (default: download)
+- `--output-dir PATH` - Download directory (default: current directory)
+
+**Examples:**
+
+```bash
+# Remaster with default settings (normal variation)
+python tracksmartin.py remaster 26c9c592-0566-46cf-bb71-91ac1deaa7b5
+
+# Subtle remaster - minimal changes, preserves original character
+python tracksmartin.py remaster 26c9c592-0566-46cf-bb71-91ac1deaa7b5 --variation subtle
+
+# High intensity remaster - maximum enhancement
+python tracksmartin.py remaster 26c9c592-0566-46cf-bb71-91ac1deaa7b5 --variation high
+
+# Remaster without waiting
+python tracksmartin.py remaster 26c9c592-0566-46cf-bb71-91ac1deaa7b5 --no-wait
+
+# Remaster with specific model
+python tracksmartin.py remaster 26c9c592-0566-46cf-bb71-91ac1deaa7b5 \
+  --model chirp-v4-5-plus \
+  --variation high
+
+# Remaster and save to specific directory
+python tracksmartin.py remaster 26c9c592-0566-46cf-bb71-91ac1deaa7b5 \
+  --output-dir ./remastered
+```
+
+**Tips:**
+- Use clips generated within 24 hours for best results
+- `subtle` is best for polishing already good tracks
+- `high` can significantly change the character of the audio
+- Remastering works on both original clips and stems
+
+---
+
+### `add-vocal` - Add AI vocals to uploaded music
+
+Add AI-generated vocals that match the original track to music uploaded via the API. Only works with clips uploaded through the `upload` command and the clip must be less than 24 hours old.
+
+```bash
+python tracksmartin.py add-vocal CLIP_ID [OPTIONS]
+```
+
+**Options:**
+- `--prompt, -p TEXT` - Lyrics for the vocals (use [Verse], [Chorus] tags) - **required**
+- `--prompt-file, -f FILE` - Read lyrics from a file instead of --prompt
+- `--start, -s INT` - Start time in seconds for adding vocals - **required**
+- `--end, -e INT` - End time in seconds for adding vocals - **required**
+- `--tags, -t TEXT` - Style tags (e.g., "pop", "rock")
+- `--style-weight FLOAT` - Weight of the style/tags (0.0-1.0, default: 0.5)
+- `--audio-weight FLOAT` - Weight of original audio (0.0-1.0, default: 0.7)
+- `--weirdness FLOAT` - Randomness/creativity (0.0-1.0, default: 0.3)
+- `--gender, -g [f|m]` - Vocal gender: f=female, m=male (default: f)
+- `--model, -m [chirp-v4-5-plus|chirp-v5]` - Model version (default: chirp-v5)
+- `--wait/--no-wait` - Wait for generation to complete (default: wait)
+- `--download/--no-download` - Download when ready (default: download)
+- `--output-dir PATH` - Download directory
+
+**Weight Parameters:**
+- `--style-weight` - How much the style tags influence the output (higher = more stylized)
+- `--audio-weight` - How much the original audio influences the output (higher = closer to original)
+- `--weirdness` - Creativity/randomness level (higher = more experimental)
+
+**Examples:**
+
+```bash
+# Add female vocals from 0-30 seconds
+python tracksmartin.py add-vocal <clip_id> \
+  -p "[Verse] Lyrics here..." \
+  -s 0 -e 30
+
+# Add male vocals with pop style
+python tracksmartin.py add-vocal <clip_id> \
+  -p "[Chorus] Sing along with me..." \
+  -s 10 -e 40 \
+  --tags "pop" \
+  --gender m
+
+# Add vocals from a lyrics file
+python tracksmartin.py add-vocal <clip_id> \
+  -f lyrics.txt \
+  -s 0 -e 60
+
+# Fine-tune the blend between style and original audio
+python tracksmartin.py add-vocal <clip_id> \
+  -p "[Verse] My lyrics here..." \
+  -s 0 -e 30 \
+  --style-weight 0.7 \
+  --audio-weight 0.5 \
+  --weirdness 0.2
+
+# High creativity with rock style
+python tracksmartin.py add-vocal <clip_id> \
+  -p "[Verse] Rock lyrics..." \
+  -s 0 -e 45 \
+  --tags "rock, powerful" \
+  --weirdness 0.6 \
+  --gender m
+```
+
+**Typical Workflow:**
+
+```bash
+# 1. Upload your instrumental track
+python tracksmartin.py upload "https://example.com/instrumental.mp3"
+# Note the clip_id from the response
+
+# 2. Add vocals to specific sections
+python tracksmartin.py add-vocal <uploaded_clip_id> \
+  -p "[Verse 1] First verse lyrics... [Chorus] Catchy chorus..." \
+  -s 0 -e 60 \
+  --tags "pop, melodic"
+```
+
+**Tips:**
+- The clip must be uploaded via the `upload` command (not generated)
+- Clips must be less than 24 hours old
+- Use structured lyrics with [Verse], [Chorus], [Bridge] tags for better results
+- Lower `audio_weight` gives the AI more freedom to interpret
+
+---
+
 ### `stems` - Extract stems (separate instruments/vocals)
 
 ```bash
@@ -773,6 +913,116 @@ python tracksmartin.py midi 26c9c592-0566-46cf-bb71-91ac1deaa7b5 --max-attempts 
 - Note data (pitch, timing, velocity) for each instrument
 - Works with both complete songs and individual stems
 - Automatic polling until MIDI generation completes
+
+---
+
+### `genres` - Intelligent genre and style suggestions
+
+Get intelligent genre/style suggestions based on Suno's compatibility data to create better music.
+
+This command uses a comprehensive database of 600+ recognized Suno styles and their compatibility relationships to help you choose tags that work well together.
+
+```bash
+python tracksmartin.py genres [OPTIONS]
+```
+
+**Options:**
+- `--genre, -g TEXT` - Show compatible styles for a specific genre
+- `--search, -s TEXT` - Search for styles matching a query
+- `--validate, -v TEXT` - Validate a comma-separated list of tags
+- `--limit, -l INT` - Maximum number of results to show (default: 10)
+
+**Examples:**
+
+```bash
+# List all 600+ recognized Suno styles
+python tracksmartin.py genres
+
+# Get compatible styles for a genre
+python tracksmartin.py genres --genre rock
+# Output: Shows top compatible styles like: guitar, energetic, powerful, etc.
+
+# Search for jazz-related styles
+python tracksmartin.py genres --search jazz
+# Output: jazz, smooth jazz, acid jazz, nu-jazz, etc.
+
+# Validate your tags before using them
+python tracksmartin.py genres --validate "rock, guitar, xyz, energetic"
+# Output:
+#   ✅ Valid tags: rock, guitar, energetic
+#   ❌ Unrecognized tags: xyz
+#   💡 Did you mean? -> rock, hard rock, punk rock
+
+# Get more compatible styles
+python tracksmartin.py genres --genre "electronic" --limit 20
+```
+
+**What you get:**
+
+- **List mode** (no options): Shows all 600+ recognized Suno styles in columns
+- **Genre mode** (`--genre`): 
+  - Top compatible styles ranked by frequency
+  - Visual frequency bars showing popularity
+  - Suggested tag combination ready to use
+- **Search mode** (`--search`):
+  - Fuzzy search matching your query
+  - Similarity scores for each result
+  - Useful for finding style variations
+- **Validate mode** (`--validate`):
+  - Checks which tags are recognized by Suno
+  - Suggests corrections for invalid tags
+  - Helps avoid API rejections
+
+**Usage Tips:**
+
+1. **Start with a genre** to see what works well with it:
+   ```bash
+   tracksmartin genres --genre "synthwave"
+   # Suggests: electronic, retro, 80s, etc.
+   ```
+
+2. **Validate before creating** to avoid errors:
+   ```bash
+   tracksmartin genres --validate "techno, house, bass"
+   # Check all tags are valid
+   
+   tracksmartin create -t "My Song" -p "..." --tags "techno, house, bass"
+   # Use validated tags
+   ```
+
+3. **Search for variations** of a style:
+   ```bash
+   tracksmartin genres --search "rock"
+   # Find: rock, hard rock, punk rock, alternative rock, etc.
+   ```
+
+4. **Build better tag combinations**:
+   ```bash
+   # Get suggestions for "jazz"
+   tracksmartin genres --genre jazz
+   # Use suggested combination: "jazz, saxophone, smooth, lounge, sophisticated"
+   
+   tracksmartin create -t "Late Night Jazz" -p "..." \
+     --tags "jazz, saxophone, smooth, lounge"
+   ```
+
+**Integration with `create` command:**
+
+When you use the `create` command with tags, TracksMartin will automatically:
+- Validate your tags against Suno's recognized styles
+- Warn you about unrecognized tags
+- Offer to enhance your tags with compatible styles
+- Suggest corrections for typos
+
+```bash
+# TracksMartin will validate and suggest improvements
+python tracksmartin.py create -t "My Song" -p "..." --tags "rok, gitar"
+# ⚠️ Warning: Unrecognized tags: rok, gitar
+# 💡 Suggestions:
+#    'rok' → try: rock, hard rock, punk rock
+#    'gitar' → try: guitar, electric guitar, acoustic guitar
+# 💡 Enhance tags with compatible styles? [y/N]
+```
 
 ---
 
@@ -1208,6 +1458,5 @@ Available AI models (from oldest to newest):
   - [Get Credits](https://docs.sunoapi.com/get-credits)
 - [Click Documentation](https://click.palletsprojects.com/)
 - Example Scripts:
-
 
 

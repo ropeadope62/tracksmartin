@@ -311,6 +311,141 @@ class TracksMartinClient:
         
         return self._make_request("POST", "suno/create", data=payload)
     
+    def remaster(
+        self,
+        clip_id: str,
+        variation_category: str = "normal",
+        mv: str = "chirp-v5"
+    ) -> Dict[str, Any]:
+        """
+        Remaster an existing clip to change the sonic interpretation
+        
+        Song must be generated with Suno first and clip_id supplied with the command, becoming the continue_clip_id. Best results with clips generated within 24 hours.
+        
+        Args:
+            clip_id: ID of the clip to remaster (works best with clips < 24h old)
+            variation_category: Intensity of changes:
+                - "subtle": Minor changes
+                - "normal": Moderate changes (default)
+                - "high": Significant changes
+            mv: Model version. Allowed: chirp-v4, chirp-v4-5-plus, chirp-v5
+            
+        Returns:
+            Dictionary containing task_id for polling
+            
+        Raises:
+            ValueError: If variation_category is invalid
+            SunoAPIError: If the API request fails
+        """
+        valid_variations = ["subtle", "normal", "high"]
+        if variation_category not in valid_variations:
+            raise ValueError(
+                f"variation_category must be one of {valid_variations}, "
+                f"got '{variation_category}'"
+            )
+        
+        valid_models = ["chirp-v4", "chirp-v4-5-plus", "chirp-v5"]
+        if mv not in valid_models:
+            raise ValueError(
+                f"Model must be one of {valid_models} for remaster, "
+                f"got '{mv}'"
+            )
+        
+        payload = {
+            "task_type": "remaster",
+            "continue_clip_id": clip_id,
+            "variation_category": variation_category,
+            "mv": mv
+        }
+        
+        return self._make_request("POST", "suno/create", data=payload)
+    
+    def add_vocal(
+        self,
+        clip_id: str,
+        prompt: str,
+        start_time: int,
+        end_time: int,
+        tags: Optional[str] = None,
+        style_weight: float = 0.5,
+        weirdness_constraint: float = 0.3,
+        audio_weight: float = 0.7,
+        vocal_gender: str = "f",
+        mv: str = "chirp-v5"
+    ) -> Dict[str, Any]:
+        """
+        Add vocals to uploaded music
+        
+        Add AI-generated vocals that match the original track to music
+        uploaded via the API. Only works with tracks uploaded through the API
+        and clip_id must be generated within 24 hours.
+        
+        Args:
+            clip_id: ID of the uploaded clip (must be < 24h old)
+            prompt: Lyrics for the vocals (use [Verse], [Chorus] tags)
+            start_time: Start time in seconds for adding vocals
+            end_time: End time in seconds for adding vocals
+            tags: Style tags (e.g., "pop", "rock")
+            style_weight: Weight of the style/tags (0.0 to 1.0, default: 0.5)
+            weirdness_constraint: Randomness/creativity (0.0 to 1.0, default: 0.3)
+            audio_weight: Weight of original audio (0.0 to 1.0, default: 0.7)
+            vocal_gender: "f" for female, "m" for male (default: "f")
+            mv: Model version (chirp-v4-5-plus or chirp-v5, default: chirp-v5)
+            
+        Returns:
+            Dictionary containing task_id for polling
+            
+        Raises:
+            ValueError: If parameters are invalid
+            SunoAPIError: If the API request fails
+        """
+        # Validate vocal_gender
+        if vocal_gender not in ["f", "m"]:
+            raise ValueError(
+                f"vocal_gender must be 'f' (female) or 'm' (male), "
+                f"got '{vocal_gender}'"
+            )
+        
+        # Validate model
+        valid_models = ["chirp-v4-5-plus", "chirp-v5"]
+        if mv not in valid_models:
+            raise ValueError(
+                f"Model must be one of {valid_models} for add_vocal, "
+                f"got '{mv}'"
+            )
+        
+        # Validate weight parameters
+        for name, value in [("style_weight", style_weight),
+                            ("weirdness_constraint", weirdness_constraint),
+                            ("audio_weight", audio_weight)]:
+            if not 0 <= value <= 1:
+                raise ValueError(f"{name} must be between 0.0 and 1.0")
+        
+        # Validate time parameters
+        if start_time < 0:
+            raise ValueError("start_time must be >= 0")
+        if end_time <= start_time:
+            raise ValueError("end_time must be greater than start_time")
+        
+        payload = {
+            "task_type": "add_vocals",
+            "continue_clip_id": clip_id,
+            "mv": mv,
+            "custom_mode": True,
+            "prompt": prompt,
+            "style_weight": style_weight,
+            "weirdness_constraint": weirdness_constraint,
+            "audio_weight": audio_weight,
+            "overpainting_start_s": start_time,
+            "overpainting_end_s": end_time,
+            "vocal_gender": vocal_gender
+        }
+        
+        if tags:
+            payload["tags"] = tags
+        
+        return self._make_request("POST", "suno/create", data=payload)
+    
     def stems_basic(self, clip_id: str) -> Dict[str, Any]:
         """
         Extract basic stems (vocals, instrumentals) from a clip

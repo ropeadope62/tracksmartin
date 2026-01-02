@@ -215,6 +215,47 @@ def create(title, prompt, prompt_file, genre, auto_lyrics, theme, mood, length,
         tags = genre_tags.get(genre.lower(), genre)
         click.echo(f"Auto-generated tags from genre: {tags}")
     
+    # Validate and enhance tags using genre compatibility data
+    if tags:
+        try:
+            from genre_suggestions import GenreSuggestions
+            suggestions = GenreSuggestions()
+            
+            valid, invalid = suggestions.validate_tags(tags)
+            
+            if invalid:
+                click.secho(f"\n⚠️  Warning: Unrecognized tags detected", fg='yellow')
+                click.echo(f"   Invalid: {', '.join(invalid)}")
+                
+                # Suggest corrections
+                click.echo("\n💡 Suggestions:")
+                for tag in invalid[:2]:  # Only show for first 2 invalid
+                    matches = suggestions.search_styles(tag, limit=3)
+                    if matches:
+                        similar = ', '.join([m[0] for m in matches])
+                        click.echo(f"   '{tag}' → try: {similar}")
+                
+                # Ask if user wants to enhance with compatible styles
+                if valid and click.confirm("\n💡 Enhance tags with compatible styles?", 
+                                          default=False):
+                    enhanced = suggestions.enhance_tags(', '.join(valid), 
+                                                       additional=2)
+                    click.echo(f"   Enhanced: {enhanced}")
+                    if click.confirm("Use enhanced tags?", default=True):
+                        tags = enhanced
+            elif len(valid) < 3:
+                # Offer to enhance if tags are valid but sparse
+                if click.confirm(f"\n💡 Add compatible styles to '{tags}'?", 
+                               default=False):
+                    enhanced = suggestions.enhance_tags(tags, additional=3)
+                    click.echo(f"   Suggested: {enhanced}")
+                    if click.confirm("Use suggested tags?", default=True):
+                        tags = enhanced
+        except Exception as e:
+            # Silently fall back if genre suggestions fail
+            logger.debug(f"Tag validation skipped: {e}")
+            pass
+    
     client = TracksMartinClient()
     
     click.secho(f"\nCreating: {title}", fg='cyan', bold=True)
@@ -393,18 +434,58 @@ def extend(clip_id, prompt, title, tags, continue_at, model, wait, download, out
     """Extend an existing song clip
     
     \b
+    Note: You must provide --prompt AND at least one of (--title or --tags)
+    
+    \b
     Examples:
-      # Extend with new lyrics
-      tracksmartin extend <clip_id> --prompt "[Verse 3]\\nNew lyrics here"
+      # Extend with new lyrics and tags
+      tracksmartin extend <clip_id> \\
+        --prompt "[Verse 3]\\nNew lyrics here" \\
+        --tags "rock, energetic"
       
-      # Extend with new title and style
-      tracksmartin extend <clip_id> --title "Extended Mix" --tags "energetic"
+      # Extend with title and style
+      tracksmartin extend <clip_id> \\
+        --prompt "[Outro]\\nFading away" \\
+        --title "Extended Mix" \\
+        --tags "melodic"
       
       # Extend from specific timestamp and wait
-      tracksmartin extend <clip_id> --continue-at 30 --wait --download
+      tracksmartin extend <clip_id> \\
+        --prompt "[Bridge]\\nInstrumental break" \\
+        --tags "progressive" \\
+        --continue-at 120 \\
+        --wait --download
     """
     
     client = TracksMartinClient()
+    
+    # Validate required parameters
+    if not prompt:
+        click.secho(
+            "Error: --prompt is required for extend",
+            fg='red', err=True
+        )
+        click.echo("\nExamples:")
+        click.echo('  tracksmartin extend <clip_id> '
+                   '--prompt "[Verse 3]..." --tags "rock"')
+        click.echo('  tracksmartin extend <clip_id> '
+                   '-p "[Outro]..." --title "Extended"')
+        sys.exit(1)
+    
+    if not title and not tags:
+        click.secho(
+            "Error: You must specify at least one of --title or --tags",
+            fg='red', err=True
+        )
+        click.echo("\nThe API needs to know how the extension should sound.")
+        click.echo("\nExamples:")
+        click.echo('  tracksmartin extend <clip_id> '
+                   '--prompt "..." --tags "pop, upbeat"')
+        click.echo('  tracksmartin extend <clip_id> '
+                   '--prompt "..." --title "Extended Mix"')
+        click.echo('  tracksmartin extend <clip_id> '
+                   '--prompt "..." --title "..." --tags "..."')
+        sys.exit(1)
     
     click.secho(f"\nExtending clip: {clip_id}", fg='cyan', bold=True)
     if continue_at > 0:
@@ -596,6 +677,229 @@ def cover(clip_id, prompt, title, tags, model, wait, download, output_dir):
     except TracksMartinClientError as e:
         click.secho(f"Error: {e}", fg='red', err=True)
         logger.error(f"Cover failed: {e}")
+        sys.exit(1)
+
+
+@cli.command()
+@click.argument('clip_id')
+@click.option('--variation', '-v', 
+              type=click.Choice(['subtle', 'normal', 'high']),
+              default='normal', show_default=True,
+              help='Intensity of changes: subtle (minor), normal (moderate), high (significant)')
+@click.option('--model', '-m', 
+              type=click.Choice(['chirp-v4', 'chirp-v4-5-plus', 'chirp-v5']),
+              default='chirp-v5', show_default=True,
+              help='Model version for remastering')
+@click.option('--wait/--no-wait', default=True, show_default=True,
+              help='Wait for remaster to complete')
+@click.option('--download/--no-download', default=True, show_default=True,
+              help='Download when ready')
+@click.option('--output-dir', type=click.Path(), default='.',
+              help='Download directory')
+def remaster(clip_id, variation, model, wait, download, output_dir):
+    """Remaster a clip with AI audio enhancement
+    
+    \b
+    Applies AI-powered audio enhancement to improve the quality
+    of existing clips. Best results with clips generated within 24 hours.
+    
+    \b
+    Variation levels:
+      subtle  - Minor quality improvements, preserves original character
+      normal  - Moderate enhancements, balanced improvement
+      high    - Significant changes, maximum enhancement
+    
+    \b
+    Examples:
+      # Remaster with default settings (normal variation)
+      tracksmartin remaster <clip_id>
+      
+      # Subtle remaster (minimal changes)
+      tracksmartin remaster <clip_id> --variation subtle
+      
+      # High intensity remaster
+      tracksmartin remaster <clip_id> --variation high
+      
+      # Remaster without waiting
+      tracksmartin remaster <clip_id> --no-wait
+      
+      # Remaster with specific model
+      tracksmartin remaster <clip_id> --model chirp-v4-5-plus
+    """
+    
+    client = TracksMartinClient()
+    
+    click.secho(f"Remastering clip: {clip_id}", fg='cyan', bold=True)
+    click.echo(f"Variation: {variation}")
+    click.echo(f"Model: {model}")
+    
+    try:
+        response = client.remaster(
+            clip_id=clip_id,
+            variation_category=variation,
+            mv=model
+        )
+        
+        task_id = response.get('task_id')
+        if not task_id:
+            click.secho("Error: No task_id in response", fg='red', err=True)
+            sys.exit(1)
+        
+        click.secho(f"✓ Remaster task created: {task_id}", fg='green')
+        logger.info(f"Remaster created - clip_id: {clip_id}, task_id: {task_id}")
+        
+        if wait:
+            click.echo("\nWaiting for remaster to complete...")
+            clip = client.poll_until_complete(task_id, verbose=True)
+            
+            click.secho("\n✓ Remaster complete!", fg='green', bold=True)
+            click.echo(f"Clip ID: {clip['clip_id']}")
+            click.echo(f"Audio URL: {clip['audio_url']}")
+            
+            if download and clip.get('audio_url'):
+                title = clip.get('title', f'remaster_{clip_id[:8]}')
+                filename = client.sanitize_filename(title) + "_remastered.mp3"
+                filepath = f"{output_dir}/{filename}"
+                
+                with click.progressbar(length=1, label='Downloading') as bar:
+                    client.download_file(clip['audio_url'], filepath)
+                    bar.update(1)
+                
+                click.secho(f"✓ Downloaded: {filepath}", fg='green')
+                logger.info(f"Downloaded remaster: {filepath}")
+        else:
+            click.echo(f"\nUse 'tracksmartin get {task_id}' to check status")
+        
+    except (TracksMartinClientError, ValueError) as e:
+        click.secho(f"Error: {e}", fg='red', err=True)
+        logger.error(f"Remaster failed: {e}")
+        sys.exit(1)
+
+
+@cli.command('add-vocal')
+@click.argument('clip_id')
+@click.option('--prompt', '-p', required=True,
+              help='Lyrics for the vocals (use [Verse], [Chorus] tags)')
+@click.option('--prompt-file', '-f', type=click.File('r'),
+              help='Read lyrics from a file instead of --prompt')
+@click.option('--start', '-s', type=int, required=True,
+              help='Start time in seconds for adding vocals')
+@click.option('--end', '-e', type=int, required=True,
+              help='End time in seconds for adding vocals')
+@click.option('--tags', '-t', help='Style tags (e.g., "pop", "rock")')
+@click.option('--style-weight', type=click.FloatRange(0, 1), default=0.5,
+              show_default=True, help='Weight of the style/tags (0.0-1.0)')
+@click.option('--weirdness', type=click.FloatRange(0, 1), default=0.3,
+              show_default=True, help='Randomness/creativity (0.0-1.0)')
+@click.option('--audio-weight', type=click.FloatRange(0, 1), default=0.7,
+              show_default=True, help='Weight of original audio (0.0-1.0)')
+@click.option('--gender', '-g', type=click.Choice(['f', 'm']), default='f',
+              show_default=True, help='Vocal gender: f=female, m=male')
+@click.option('--model', '-m', type=click.Choice(['chirp-v4-5-plus', 'chirp-v5']),
+              default='chirp-v5', show_default=True, help='Model version')
+@click.option('--wait/--no-wait', default=True, show_default=True,
+              help='Wait for generation to complete')
+@click.option('--download/--no-download', default=True, show_default=True,
+              help='Download when ready')
+@click.option('--output-dir', type=click.Path(), default='.',
+              help='Download directory')
+def add_vocal(clip_id, prompt, prompt_file, start, end, tags, style_weight,
+              weirdness, audio_weight, gender, model, wait, download, output_dir):
+    """Add AI-generated vocals to uploaded music
+    
+    \b
+    Add vocals that match the original track to music uploaded via the API.
+    Only works with clips uploaded through the upload command and
+    the clip must be less than 24 hours old.
+    
+    \b
+    Parameters:
+      --style-weight   How much the style tags influence the output (0-1)
+      --audio-weight   How much the original audio influences the output (0-1)
+      --weirdness      Creativity/randomness level (0-1)
+    
+    \b
+    Examples:
+      # Add female vocals from 0-30 seconds
+      tracksmartin add-vocal <clip_id> -p "[Verse] Lyrics here..." -s 0 -e 30
+      
+      # Add male vocals with pop style
+      tracksmartin add-vocal <clip_id> -p "[Chorus] Sing along..." \
+        -s 10 -e 40 --tags "pop" --gender m
+      
+      # Add vocals from lyrics file
+      tracksmartin add-vocal <clip_id> -f lyrics.txt -s 0 -e 60
+      
+      # Fine-tune the blend
+      tracksmartin add-vocal <clip_id> -p "..." -s 0 -e 30 \
+        --style-weight 0.7 --audio-weight 0.5 --weirdness 0.2
+    """
+    
+    # Get prompt from file if provided
+    if prompt_file:
+        prompt = prompt_file.read()
+    
+    if not prompt:
+        click.secho("Error: --prompt or --prompt-file is required", 
+                   fg='red', err=True)
+        sys.exit(1)
+    
+    client = TracksMartinClient()
+    
+    click.secho(f"\n🎤 Adding vocals to clip: {clip_id}", fg='cyan', bold=True)
+    click.echo(f"Time range: {start}s - {end}s")
+    click.echo(f"Gender: {'Female' if gender == 'f' else 'Male'}")
+    if tags:
+        click.echo(f"Style: {tags}")
+    click.echo(f"Weights: style={style_weight}, audio={audio_weight}, weird={weirdness}")
+    
+    try:
+        response = client.add_vocal(
+            clip_id=clip_id,
+            prompt=prompt,
+            start_time=start,
+            end_time=end,
+            tags=tags,
+            style_weight=style_weight,
+            weirdness_constraint=weirdness,
+            audio_weight=audio_weight,
+            vocal_gender=gender,
+            mv=model
+        )
+        
+        task_id = response.get('task_id')
+        if not task_id:
+            click.secho("Error: No task_id in response", fg='red', err=True)
+            sys.exit(1)
+        
+        click.secho(f"\u2713 Add vocal task created: {task_id}", fg='green')
+        logger.info(f"Add vocal - clip_id: {clip_id}, task_id: {task_id}")
+        
+        if wait:
+            click.echo("\nWaiting for vocal generation to complete...")
+            clip = client.poll_until_complete(task_id, verbose=True)
+            
+            click.secho("\n\u2713 Vocals added successfully!", fg='green', bold=True)
+            click.echo(f"Clip ID: {clip['clip_id']}")
+            click.echo(f"Audio URL: {clip['audio_url']}")
+            
+            if download and clip.get('audio_url'):
+                title = clip.get('title', f'vocal_{clip_id[:8]}')
+                filename = client.sanitize_filename(title) + "_with_vocals.mp3"
+                filepath = f"{output_dir}/{filename}"
+                
+                with click.progressbar(length=1, label='Downloading') as bar:
+                    client.download_file(clip['audio_url'], filepath)
+                    bar.update(1)
+                
+                click.secho(f"\u2713 Downloaded: {filepath}", fg='green')
+                logger.info(f"Downloaded with vocals: {filepath}")
+        else:
+            click.echo(f"\nUse 'tracksmartin get {task_id}' to check status")
+        
+    except (TracksMartinClientError, ValueError) as e:
+        click.secho(f"Error: {e}", fg='red', err=True)
+        logger.error(f"Add vocal failed: {e}")
         sys.exit(1)
 
 
@@ -1070,28 +1374,145 @@ def credits():
 
 
 @cli.command()
-@click.option('--genre', '-g', help='Show detailed description for a specific genre')
-def genres(genre):
-    """List all supported genres for lyric generation"""
+@click.option('--genre', '-g', help='Show compatible styles for a specific genre')
+@click.option('--search', '-s', help='Search for styles matching a query')
+@click.option('--validate', '-v', help='Validate a comma-separated list of tags')
+@click.option('--limit', '-l', default=10, help='Maximum number of results to show')
+def genres(genre, search, validate, limit):
+    """List supported Suno genres and get intelligent style suggestions
     
-    if genre:
-        # Show detailed info for specific genre
-        try:
-            desc = LyricsGenerator.get_genre_description(genre)
-            click.secho(f"\n{desc}\n", fg='cyan')
-        except Exception as e:
-            click.secho(f"Error: {e}", fg='red', err=True)
-    else:
-        # List all genres
-        click.secho("\n📋 Supported Genres for Auto-Lyrics Generation\n", 
-                    fg='cyan', bold=True)
-        genres_list = LyricsGenerator.list_supported_genres()
+    This command uses Suno's genre compatibility data to help you create better music.
+    
+    Examples:
+        List all recognized styles:
+            tracksmartin genres
         
+        Get compatible styles for a genre:
+            tracksmartin genres --genre rock
+        
+        Search for styles:
+            tracksmartin genres --search "jazz"
+        
+        Validate your tags:
+            tracksmartin genres --validate "rock, guitar, xyz, energetic"
+    """
+    from genre_suggestions import GenreSuggestions
+    
+    try:
+        suggestions = GenreSuggestions()
+    except Exception as e:
+        click.secho(f"Error loading genre data: {e}", fg='red', err=True)
+        click.echo("\nFalling back to basic genre list...")
+        genres_list = LyricsGenerator.list_supported_genres()
         for i, g in enumerate(genres_list, 1):
             click.echo(f"  {i:2d}. {g}")
+        return
+    
+    if validate:
+        # Validate user tags
+        valid, invalid = suggestions.validate_tags(validate)
         
-        click.echo("\nUse --genre/-g to see detailed info about a specific genre")
-        click.echo("Example: tracksmartin genres --genre rock\n")
+        click.secho(f"\n🔍 Tag Validation Results\n", fg='cyan', bold=True)
+        
+        if valid:
+            click.secho(f"✅ Valid tags ({len(valid)}):", fg='green')
+            click.echo(f"   {', '.join(valid)}")
+        
+        if invalid:
+            click.secho(f"\n❌ Unrecognized tags ({len(invalid)}):", fg='red')
+            click.echo(f"   {', '.join(invalid)}")
+            
+            # Suggest corrections
+            click.secho(f"\n💡 Did you mean?", fg='yellow')
+            for tag in invalid[:3]:  # Only show suggestions for first 3 invalid tags
+                matches = suggestions.search_styles(tag, limit=3)
+                if matches:
+                    similar = ', '.join([m[0] for m in matches])
+                    click.echo(f"   '{tag}' → {similar}")
+        else:
+            click.secho("\n✅ All tags are valid!", fg='green')
+        
+        click.echo()
+        
+    elif search:
+        # Search for styles
+        results = suggestions.search_styles(search, limit=limit)
+        
+        click.secho(f"\n🔍 Search results for '{search}'\n", fg='cyan', bold=True)
+        
+        if results:
+            for i, (style, score) in enumerate(results, 1):
+                # Visual score indicator
+                bars = '█' * int(score * 10)
+                click.echo(f"  {i:2d}. {style:30s} {bars} {score:.2f}")
+        else:
+            click.secho("No matching styles found.", fg='yellow')
+        
+        click.echo()
+        
+    elif genre:
+        # Show compatible styles for specific genre
+        if not suggestions.is_valid_style(genre):
+            click.secho(f"\n⚠️  '{genre}' is not in Suno's recognized styles", 
+                       fg='yellow')
+            
+            # Suggest alternatives
+            matches = suggestions.search_styles(genre, limit=5)
+            if matches:
+                click.echo("\n💡 Did you mean one of these?")
+                for style, score in matches:
+                    click.echo(f"   • {style}")
+                click.echo()
+                return
+        
+        compatible = suggestions.get_compatible_styles(genre, limit=limit)
+        
+        click.secho(f"\n🎵 Compatible styles for '{genre}'\n", fg='cyan', bold=True)
+        
+        if compatible:
+            click.echo("Top compatible styles (by frequency):\n")
+            for i, (style, freq) in enumerate(compatible, 1):
+                # Visual frequency indicator
+                bars = '█' * min(freq, 20)
+                click.echo(f"  {i:2d}. {style:30s} {bars} ({freq})")
+            
+            # Show suggested tag combination
+            suggested = suggestions.suggest_tags(genre, count=5)
+            click.secho(f"\n💡 Suggested tag combination:", fg='green')
+            click.echo(f"   {suggested}\n")
+        else:
+            click.secho("No compatibility data available for this genre.", 
+                       fg='yellow')
+            click.echo()
+        
+    else:
+        # List all available styles
+        click.secho("\n🎵 Suno Recognized Styles\n", fg='cyan', bold=True)
+        
+        all_styles = suggestions.default_styles
+        
+        # Show count
+        click.echo(f"Total: {len(all_styles)} recognized styles\n")
+        
+        # Display in columns
+        cols = 3
+        col_width = 30
+        
+        for i in range(0, len(all_styles), cols):
+            row = all_styles[i:i+cols]
+            formatted = [f"{s:28s}" for s in row]
+            click.echo("  " + " ".join(formatted))
+        
+        click.echo("\n" + "="*90)
+        click.echo("💡 Usage tips:")
+        click.echo("   --genre/-g <style>     Get compatible styles for a genre")
+        click.echo("   --search/-s <query>    Search for styles")
+        click.echo("   --validate/-v <tags>   Validate your tag list")
+        click.echo("   --limit/-l <n>         Limit number of results (default: 10)")
+        click.echo("\nExamples:")
+        click.echo("   tracksmartin genres --genre rock")
+        click.echo("   tracksmartin genres --search jazz")
+        click.echo("   tracksmartin genres --validate 'pop, guitar, xyz'\n")
 
 
 # Add a quick command for interactive mode
